@@ -1,4 +1,11 @@
 import type { OperatorDomain, OperatorRecord } from "@/lib/operator-data";
+import {
+  operatorFlows,
+  type FlowStatus,
+  type OperatorFlow,
+} from "@/lib/operator-flow-data";
+
+export type { FlowStatus, FlowStep, OperatorFlow } from "@/lib/operator-flow-data";
 
 export const domainLabels: Record<OperatorDomain, string> = {
   "ai-labeling": "AI 打标与模型",
@@ -58,25 +65,6 @@ export type OperatorDetailContent = {
   suitableFor: string;
 };
 
-export type FlowStatus = "current" | "historical";
-
-export type FlowStep = {
-  id: string;
-  kind: "operator" | "inline" | "external";
-  label?: string;
-};
-
-export type OperatorFlow = {
-  description: string;
-  fieldMappings: string[];
-  id: string;
-  inputFields: string[];
-  name: string;
-  outputFields: string[];
-  status: FlowStatus;
-  steps: FlowStep[];
-};
-
 export type LineageRelationKind =
   | "cooccurrence"
   | "field_compatible"
@@ -84,133 +72,25 @@ export type LineageRelationKind =
   | "sequence";
 
 export type LineageRelation = {
-  flowId?: string;
+  flowIds?: string[];
   id: string;
   kind: LineageRelationKind;
   label: string;
+  serviceDomains?: string[];
   source: string;
   target: string;
 };
 
-const operatorFlows: OperatorFlow[] = [
-  {
-    id: "flow.multimodal-content-review",
-    name: "多模态内容理解与质检",
-    status: "current",
-    description: "把可访问的媒体地址交给模型生成结构化描述，再汇总为质检结果。",
-    inputFields: ["urls"],
-    outputFields: ["deepseek_output", "quality_result"],
-    fieldMappings: ["signed_urls → urls", "deepseek_output → model_result"],
-    steps: [
-      { id: "tos.sign", kind: "operator" },
-      { id: "ai-platform.deepseek", kind: "operator" },
-      { id: "quality-schema", kind: "inline", label: "结构校验" },
-      { id: "jsonl.agg", kind: "operator" },
-    ],
-  },
-  {
-    id: "flow.video-segment-review",
-    name: "视频片段理解与人工复核",
-    status: "current",
-    description: "将长视频切成片段，逐段生成描述，并交给人工复核。",
-    inputFields: ["tos_path"],
-    outputFields: ["segment_caption", "review_result"],
-    fieldMappings: ["split_tos_path → tos_path"],
-    steps: [
-      { id: "vod.split", kind: "operator" },
-      { id: "csv.expand", kind: "operator" },
-      { id: "ai-platform.gemini", kind: "operator" },
-      { id: "human-review", kind: "external", label: "人工复核" },
-    ],
-  },
-  {
-    id: "flow.vod-preview-delivery",
-    name: "VOD 预览交付",
-    status: "current",
-    description: "上传媒体、完成转码并取回可供验收的预览地址。",
-    inputFields: ["tos_path"],
-    outputFields: ["preview_url"],
-    fieldMappings: ["vid → vid", "runid → runid"],
-    steps: [
-      { id: "vod.upload", kind: "operator" },
-      { id: "vod.transcoding.start", kind: "operator" },
-      { id: "vod.transcoding.query.v2", kind: "operator" },
-      { id: "vod.transcoding.get", kind: "operator" },
-    ],
-  },
-  {
-    id: "flow.audio-transcription",
-    name: "音频转写入库",
-    status: "current",
-    description: "提交音频转写任务，查询文本结果并写入数据集。",
-    inputFields: ["audio_tos_path", "rowkey"],
-    outputFields: ["asr"],
-    fieldMappings: ["asr_task_id → asr_task_id", "asr → transcript"],
-    steps: [
-      { id: "vod.audio.asr.submit", kind: "operator" },
-      { id: "vod.audio.asr.query", kind: "operator" },
-      { id: "hbase.set.v2", kind: "operator" },
-    ],
-  },
-  {
-    id: "flow.image-quality-gate",
-    name: "图片质量筛选与汇总",
-    status: "current",
-    description: "统一图片尺寸，补充质量分，再将通过的数据汇总交付。",
-    inputFields: ["tos_path"],
-    outputFields: ["merge_tos_path"],
-    fieldMappings: ["resize_tos_path → tos_path", "average_ap_score → score"],
-    steps: [
-      { id: "image.resize", kind: "operator" },
-      { id: "cn_clip.artimuse", kind: "operator" },
-      { id: "ap_v25.filter", kind: "operator" },
-      { id: "csv.merge", kind: "operator" },
-    ],
-  },
-  {
-    id: "history.general-model-label-v1",
-    name: "通用模型批量标注（旧版）",
-    status: "historical",
-    description: "曾用于批量读取媒体列表并生成模型标签，当前未注册。",
-    inputFields: ["tos_dir"],
-    outputFields: ["merge_tos_path"],
-    fieldMappings: ["signed_urls → urls"],
-    steps: [
-      { id: "tos.list", kind: "operator" },
-      { id: "tos.sign", kind: "operator" },
-      { id: "ai-platform.deepseek", kind: "operator" },
-      { id: "csv.merge", kind: "operator" },
-    ],
-  },
-  {
-    id: "history.black-border-cleanup-v1",
-    name: "视频黑边清理（旧版）",
-    status: "historical",
-    description: "曾先检测黑边参数再执行裁剪，当前未注册。",
-    inputFields: ["tos_path"],
-    outputFields: ["crop_tos_path"],
-    fieldMappings: ["black_border_crop → crop_config"],
-    steps: [
-      { id: "vod.crop.blackborder.get", kind: "operator" },
-      { id: "vod.crop.blackborder.crop", kind: "operator" },
-      { id: "vod.upload.tos", kind: "operator" },
-    ],
-  },
-  {
-    id: "history.dataset-write-v1",
-    name: "数据集字段回写（旧版）",
-    status: "historical",
-    description: "曾根据对象路径生成主键并回写字段，当前未注册。",
-    inputFields: ["tos_path"],
-    outputFields: ["rowkey"],
-    fieldMappings: ["rowkey → rowkey"],
-    steps: [
-      { id: "rowkey", kind: "operator" },
-      { id: "hbase.get", kind: "operator" },
-      { id: "hbase.set", kind: "operator" },
-    ],
-  },
-];
+export type ReusableOperatorPattern = {
+  currentFlowCount: number;
+  evidenceFlows: OperatorFlow[];
+  flowCount: number;
+  historicalFlowCount: number;
+  id: string;
+  kind: "cooccurrence" | "sequence";
+  operatorIds: [string, string];
+  serviceDomains: string[];
+};
 
 const fieldRelations: LineageRelation[] = [
   relation("csv.expand", "ai-platform.gemini", "field_compatible", "片段路径可映射为模型输入"),
@@ -235,6 +115,109 @@ export function getOperatorFlows(operatorId: string, status: FlowStatus) {
       flow.status === status &&
       flow.steps.some((step) => step.kind === "operator" && step.id === operatorId)
   );
+}
+
+export function getReusableOperatorPatterns(operatorId: string): ReusableOperatorPattern[] {
+  const relevantFlows = operatorFlows.filter((flow) =>
+    flow.steps.some((step) => step.kind === "operator" && step.id === operatorId)
+  );
+  const patterns = new Map<
+    string,
+    {
+      flowIds: Set<string>;
+      kind: "cooccurrence" | "sequence";
+      operatorIds: [string, string];
+      serviceDomains: Set<string>;
+    }
+  >();
+
+  function addPattern(
+    kind: "cooccurrence" | "sequence",
+    operatorIds: [string, string],
+    flow: OperatorFlow
+  ) {
+    const id = `${kind}:${operatorIds.join(":")}`;
+    const existing = patterns.get(id);
+
+    if (existing) {
+      existing.flowIds.add(flow.id);
+      existing.serviceDomains.add(flow.serviceDomain);
+      return;
+    }
+
+    patterns.set(id, {
+      flowIds: new Set([flow.id]),
+      kind,
+      operatorIds,
+      serviceDomains: new Set([flow.serviceDomain]),
+    });
+  }
+
+  relevantFlows.forEach((flow) => {
+    flow.steps.slice(0, -1).forEach((step, index) => {
+      const nextStep = flow.steps[index + 1];
+
+      if (
+        step.kind === "operator" &&
+        nextStep.kind === "operator" &&
+        (step.id === operatorId || nextStep.id === operatorId)
+      ) {
+        addPattern("sequence", [step.id, nextStep.id], flow);
+      }
+    });
+
+    const operatorIds = [
+      ...new Set(
+        flow.steps
+          .filter((step) => step.kind === "operator")
+          .map((step) => step.id)
+      ),
+    ];
+
+    operatorIds.forEach((otherId) => {
+      if (otherId === operatorId) return;
+      addPattern(
+        "cooccurrence",
+        [operatorId, otherId].sort() as [string, string],
+        flow
+      );
+    });
+  });
+
+  const materialized = [...patterns.entries()]
+    .map(([id, pattern]) => {
+      const evidenceFlows = relevantFlows
+        .filter((flow) => pattern.flowIds.has(flow.id))
+        .sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt));
+
+      return {
+        id,
+        kind: pattern.kind,
+        operatorIds: pattern.operatorIds,
+        flowCount: evidenceFlows.length,
+        currentFlowCount: evidenceFlows.filter((flow) => flow.status === "current").length,
+        historicalFlowCount: evidenceFlows.filter((flow) => flow.status === "historical").length,
+        serviceDomains: [...pattern.serviceDomains].sort(),
+        evidenceFlows,
+      } satisfies ReusableOperatorPattern;
+    })
+    .filter((pattern) => pattern.flowCount >= 2 && pattern.serviceDomains.length >= 2);
+
+  const sequencePatterns = materialized
+    .filter((pattern) => pattern.kind === "sequence")
+    .sort(comparePatterns);
+  const sequencePairs = new Set(
+    sequencePatterns.map((pattern) => [...pattern.operatorIds].sort().join(":"))
+  );
+  const cooccurrencePatterns = materialized
+    .filter(
+      (pattern) =>
+        pattern.kind === "cooccurrence" &&
+        !sequencePairs.has([...pattern.operatorIds].sort().join(":"))
+    )
+    .sort(comparePatterns);
+
+  return [...sequencePatterns.slice(0, 2), ...cooccurrencePatterns.slice(0, 1)];
 }
 
 export function parseOperatorDetail(operator: OperatorRecord): OperatorDetailContent {
@@ -265,36 +248,101 @@ export function parseOperatorDetail(operator: OperatorRecord): OperatorDetailCon
 }
 
 function buildFlowRelations(flows: OperatorFlow[]) {
-  const relations: LineageRelation[] = [];
+  const relations = new Map<
+    string,
+    {
+      flowIds: Set<string>;
+      kind: "cooccurrence" | "sequence";
+      serviceDomains: Set<string>;
+      source: string;
+      target: string;
+    }
+  >();
+
+  function addRelation(
+    kind: "cooccurrence" | "sequence",
+    source: string,
+    target: string,
+    flow: OperatorFlow
+  ) {
+    const endpoints = kind === "cooccurrence" ? [source, target].sort() : [source, target];
+    const id = `${kind}:${endpoints.join(":")}`;
+    const existing = relations.get(id);
+
+    if (existing) {
+      existing.flowIds.add(flow.id);
+      existing.serviceDomains.add(flow.serviceDomain);
+      return;
+    }
+
+    relations.set(id, {
+      flowIds: new Set([flow.id]),
+      kind,
+      serviceDomains: new Set([flow.serviceDomain]),
+      source: endpoints[0],
+      target: endpoints[1],
+    });
+  }
 
   flows.forEach((flow) => {
-    const operatorSteps = flow.steps.filter((step) => step.kind === "operator");
-
-    operatorSteps.slice(0, -1).forEach((step, index) => {
-      const nextStep = operatorSteps[index + 1];
-      relations.push({
-        id: `${flow.id}:sequence:${step.id}:${nextStep.id}`,
-        source: step.id,
-        target: nextStep.id,
-        kind: "sequence",
-        label: `${flow.name}中的前后步骤`,
-        flowId: flow.id,
-      });
+    flow.steps.slice(0, -1).forEach((step, index) => {
+      const nextStep = flow.steps[index + 1];
+      if (step.kind === "operator" && nextStep.kind === "operator") {
+        addRelation("sequence", step.id, nextStep.id, flow);
+      }
     });
 
-    if (operatorSteps.length > 2) {
-      relations.push({
-        id: `${flow.id}:cooccurrence:${operatorSteps[0].id}:${operatorSteps.at(-1)?.id ?? ""}`,
-        source: operatorSteps[0].id,
-        target: operatorSteps.at(-1)?.id ?? operatorSteps[0].id,
-        kind: "cooccurrence",
-        label: `共同参与${flow.name}`,
-        flowId: flow.id,
+    const operatorIds = [
+      ...new Set(
+        flow.steps
+          .filter((step) => step.kind === "operator")
+          .map((step) => step.id)
+      ),
+    ];
+
+    operatorIds.forEach((source, sourceIndex) => {
+      operatorIds.slice(sourceIndex + 1).forEach((target) => {
+        addRelation("cooccurrence", source, target, flow);
       });
-    }
+    });
   });
 
-  return relations;
+  const sequencePairs = new Set(
+    [...relations.values()]
+      .filter((item) => item.kind === "sequence")
+      .map((item) => [item.source, item.target].sort().join(":"))
+  );
+
+  return [...relations.entries()]
+    .filter(([, item]) => {
+      if (item.kind === "sequence") return true;
+      return (
+        item.flowIds.size >= 2 &&
+        !sequencePairs.has([item.source, item.target].sort().join(":"))
+      );
+    })
+    .map(([id, item]) => {
+      const flowIds = [...item.flowIds];
+      const serviceDomains = [...item.serviceDomains].sort();
+      const relationLabel =
+        item.kind === "sequence"
+          ? `在 ${flowIds.length} 个 Flow 中连续串联`
+          : `在 ${flowIds.length} 个 Flow 中共同使用`;
+
+      return {
+        id,
+        source: item.source,
+        target: item.target,
+        kind: item.kind,
+        label: `${relationLabel}，覆盖 ${serviceDomains.length} 个服务场景`,
+        flowIds,
+        serviceDomains,
+      } satisfies LineageRelation;
+    });
+}
+
+function comparePatterns(a: ReusableOperatorPattern, b: ReusableOperatorPattern) {
+  return b.flowCount - a.flowCount || b.serviceDomains.length - a.serviceDomains.length;
 }
 
 function relation(

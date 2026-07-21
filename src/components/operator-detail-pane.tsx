@@ -1,15 +1,20 @@
+"use client";
+
 import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   ChevronLeft,
   ChevronRight,
   CircleCheckBig,
   Clock3,
+  GitMerge,
   FileInput,
   FileOutput,
   Layers3,
   Settings2,
+  Share2,
   Sparkles,
   Star,
   Trash2,
@@ -22,14 +27,17 @@ import {
   cardinalityLabels,
   domainLabels,
   getOperatorFlows,
+  getReusableOperatorPatterns,
   parseOperatorDetail,
   type DetailConfiguration,
   type DetailField,
   type FlowStatus,
   type OperatorFlow,
+  type ReusableOperatorPattern,
 } from "@/lib/operator-detail";
 import type { OperatorRecord } from "@/lib/operator-data";
 import { cn } from "@/lib/utils";
+import { useRef } from "react";
 
 export function OperatorDetailPane({
   className,
@@ -76,6 +84,7 @@ export function OperatorDetailPane({
   const detail = parseOperatorDetail(operator);
   const currentFlows = getOperatorFlows(operator.id, "current");
   const historicalFlows = getOperatorFlows(operator.id, "historical");
+  const reusablePatterns = getReusableOperatorPatterns(operator.id);
 
   return (
     <section
@@ -169,6 +178,7 @@ export function OperatorDetailPane({
             operatorId={operator.id}
             status="historical"
           />
+          <ReusablePatternSection patterns={reusablePatterns} />
 
           <section className="overflow-hidden rounded-xl ring-1 ring-gray-200">
             <div className="grid divide-y divide-gray-200 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
@@ -249,6 +259,20 @@ function WorkflowUsageSection({
   status: FlowStatus;
 }) {
   const isCurrent = status === "current";
+  const trackRef = useRef<HTMLDivElement>(null);
+
+  function moveTrack(direction: 1 | -1) {
+    const track = trackRef.current;
+    if (!track) return;
+
+    const firstCard = track.querySelector<HTMLElement>("[data-flow-card]");
+    const distance = (firstCard?.offsetWidth ?? track.clientWidth * 0.82) + 12;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    track.scrollBy({
+      behavior: reducedMotion ? "auto" : "smooth",
+      left: distance * direction,
+    });
+  }
 
   return (
     <section
@@ -259,7 +283,7 @@ function WorkflowUsageSection({
     >
       <div
         className={cn(
-          "flex items-start justify-between gap-4 border-b px-4 py-3",
+          "flex flex-col items-stretch gap-3 border-b px-4 py-3 sm:flex-row sm:items-start sm:justify-between",
           isCurrent ? "border-blue-200" : "border-amber-200"
         )}
       >
@@ -273,41 +297,76 @@ function WorkflowUsageSection({
             {isCurrent ? <Workflow className="size-5" /> : <Clock3 className="size-5" />}
           </span>
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-gray-950">
-              {isCurrent ? "当前服务工作流" : "历史服务工作流"}
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-semibold text-gray-950">
+                {isCurrent ? "当前参与的 Flow" : "历史参与的 Flow"}
+              </h2>
+              {flows.length ? (
+                <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-gray-600 ring-1 ring-gray-200">
+                  演示轨迹
+                </span>
+              ) : null}
+            </div>
             <p className="mt-1 text-xs leading-5 text-gray-600">
               {isCurrent
-                ? "当前已注册，可作为算子选型和串联时的参考。"
-                : "历史参与不代表当前可用或可推荐。"}
+                ? "当前已注册，可用于选型和串联参考。"
+                : "仅用于追溯，历史参与不代表当前可用。"}
             </p>
           </div>
         </div>
-        <span
-          className={cn(
-            "shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold ring-1",
-            isCurrent ? "text-blue-700 ring-blue-200" : "text-amber-800 ring-amber-200"
-          )}
-        >
-          {flows.length ? `${flows.length} 个 Flow` : "暂无 Flow"}
-        </span>
+
+        <div className="flex shrink-0 items-center justify-end gap-1.5">
+          <span
+            className={cn(
+              "mr-0.5 rounded-full bg-white px-2.5 py-1 text-xs font-semibold ring-1",
+              isCurrent ? "text-blue-700 ring-blue-200" : "text-amber-800 ring-amber-200"
+            )}
+          >
+            {flows.length ? `${flows.length} 个 Flow` : "暂无 Flow"}
+          </span>
+          {flows.length > 1 ? (
+            <>
+              <TrackButton
+                icon={ArrowLeft}
+                label={`查看上一个${isCurrent ? "当前" : "历史"} Flow`}
+                onClick={() => moveTrack(-1)}
+              />
+              <TrackButton
+                icon={ArrowRight}
+                label={`查看下一个${isCurrent ? "当前" : "历史"} Flow`}
+                onClick={() => moveTrack(1)}
+              />
+            </>
+          ) : null}
+        </div>
       </div>
 
       {flows.length ? (
-        <div className="divide-y divide-gray-200/80 bg-white">
-          {flows.map((flow) => (
-            <FlowUsageRow flow={flow} key={flow.id} operatorId={operatorId} />
+        <div
+          aria-label={`${isCurrent ? "当前" : "历史"} Flow 列表，共 ${flows.length} 条`}
+          className="orbit-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth bg-white p-4 motion-reduce:scroll-auto"
+          ref={trackRef}
+          tabIndex={0}
+        >
+          {flows.map((flow, index) => (
+            <FlowUsageCard
+              flow={flow}
+              index={index}
+              key={flow.id}
+              operatorId={operatorId}
+              total={flows.length}
+            />
           ))}
         </div>
       ) : (
         <div className="px-4 py-4">
           <div className="rounded-lg border border-dashed border-gray-300 bg-white/80 px-4 py-4">
             <p className="text-sm font-medium text-gray-800">
-              {isCurrent ? "尚未接入当前工作流数据" : "暂无已收录的历史参与记录"}
+              {isCurrent ? "尚未接入当前 Flow 数据" : "暂无已收录的历史参与记录"}
             </p>
             <p className="mt-1 text-xs leading-5 text-gray-600">
               {isCurrent
-                ? "接入 Flow 注册数据后，这里会显示名称、步骤位置、入口输出和字段映射。"
+                ? "接入 Flow 注册数据后，这里会显示服务场景、步骤位置和字段映射。"
                 : "只有发现过但当前未注册的 Flow 才会出现在这里。"}
             </p>
           </div>
@@ -317,16 +376,54 @@ function WorkflowUsageSection({
   );
 }
 
-function FlowUsageRow({ flow, operatorId }: { flow: OperatorFlow; operatorId: string }) {
-  const operatorSteps = flow.steps.filter((step) => step.kind === "operator");
-  const operatorIndex = operatorSteps.findIndex((step) => step.id === operatorId);
+function TrackButton({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="grid size-8 place-items-center rounded-md bg-white text-gray-600 ring-1 ring-gray-200 transition-colors hover:bg-gray-50 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      onClick={onClick}
+      title={label}
+      type="button"
+    >
+      <Icon className="size-3.5" />
+    </button>
+  );
+}
+
+function FlowUsageCard({
+  flow,
+  index,
+  operatorId,
+  total,
+}: {
+  flow: OperatorFlow;
+  index: number;
+  operatorId: string;
+  total: number;
+}) {
+  const operatorIndex = flow.steps.findIndex(
+    (step) => step.kind === "operator" && step.id === operatorId
+  );
 
   return (
-    <article className="px-4 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <article
+      className="flex w-[min(420px,calc(100vw-64px))] shrink-0 snap-start flex-col rounded-lg bg-white px-4 py-4 ring-1 ring-gray-200"
+      data-flow-card
+    >
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-gray-950">{flow.name}</h3>
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
+              {flow.serviceDomain}
+            </span>
             <span
               className={cn(
                 "rounded-full px-2 py-0.5 text-[11px] font-semibold",
@@ -335,30 +432,36 @@ function FlowUsageRow({ flow, operatorId }: { flow: OperatorFlow; operatorId: st
                   : "bg-gray-100 text-gray-600"
               )}
             >
-              {flow.status === "current" ? "已上线" : "未上线"}
+              {flow.status === "current" ? "已上线" : "已下线"}
             </span>
           </div>
-          <p className="mt-1 font-mono text-[11px] text-gray-500">{flow.id}</p>
-          <p className="mt-2 text-xs leading-5 text-gray-600">{flow.description}</p>
+          <h3 className="mt-2 text-sm font-semibold leading-5 text-gray-950">{flow.name}</h3>
         </div>
-        <div className="flex shrink-0 gap-2 text-[11px] text-gray-600">
-          <span className="rounded-md bg-gray-50 px-2 py-1 ring-1 ring-gray-200">
-            {flow.steps.length} 个步骤
-          </span>
-          <span className="rounded-md bg-gray-50 px-2 py-1 ring-1 ring-gray-200">
-            位于第 {operatorIndex + 1} 步
-          </span>
-        </div>
+        <span className="shrink-0 font-mono text-[11px] font-semibold text-gray-500">
+          {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
+        </span>
       </div>
 
-      <div className="orbit-scroll mt-4 overflow-x-auto pb-1">
+      <p className="mt-1 break-all font-mono text-[11px] leading-5 text-gray-500">{flow.id}</p>
+      <p className="mt-2 text-xs leading-5 text-gray-600">{flow.description}</p>
+
+      <dl className="mt-3 grid grid-cols-3 gap-2 border-y border-gray-100 py-3 text-[11px]">
+        <FlowStat label="步骤" value={`${flow.steps.length} 个`} />
+        <FlowStat label="算子位置" value={`第 ${operatorIndex + 1} 步`} />
+        <FlowStat
+          label={flow.status === "current" ? "最近使用" : "最后使用"}
+          value={flow.lastUsedAt.slice(5)}
+        />
+      </dl>
+
+      <div className="orbit-scroll mt-3 overflow-x-auto pb-1">
         <div className="flex min-w-max items-center gap-2">
-          {flow.steps.map((step, index) => (
-            <div className="flex items-center gap-2" key={`${flow.id}-${step.id}`}>
-              {index > 0 ? <ArrowRight className="size-4 shrink-0 text-gray-300" /> : null}
+          {flow.steps.map((step, stepIndex) => (
+            <div className="flex items-center gap-2" key={`${flow.id}-${step.id}-${stepIndex}`}>
+              {stepIndex > 0 ? <ArrowRight className="size-4 shrink-0 text-gray-300" /> : null}
               <span
                 className={cn(
-                  "rounded-md px-2.5 py-1.5 text-xs ring-1",
+                  "max-w-[180px] whitespace-normal break-all rounded-md px-2.5 py-1.5 text-xs leading-4 ring-1",
                   step.id === operatorId
                     ? "bg-blue-600 font-semibold text-white ring-blue-600"
                     : step.kind === "operator"
@@ -373,7 +476,7 @@ function FlowUsageRow({ flow, operatorId }: { flow: OperatorFlow; operatorId: st
         </div>
       </div>
 
-      <dl className="mt-4 grid gap-3 border-t border-gray-100 pt-3 text-xs sm:grid-cols-3">
+      <dl className="mt-3 grid gap-3 border-t border-gray-100 pt-3 text-xs sm:grid-cols-3">
         <FlowMeta label="入口字段" values={flow.inputFields} />
         <FlowMeta label="输出字段" values={flow.outputFields} />
         <FlowMeta label="字段映射" values={flow.fieldMappings} />
@@ -382,14 +485,139 @@ function FlowUsageRow({ flow, operatorId }: { flow: OperatorFlow; operatorId: st
   );
 }
 
+function FlowStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-gray-500">{label}</dt>
+      <dd className="mt-1 truncate font-medium text-gray-800" title={value}>{value}</dd>
+    </div>
+  );
+}
+
 function FlowMeta({ label, values }: { label: string; values: string[] }) {
   return (
     <div className="min-w-0">
       <dt className="text-gray-500">{label}</dt>
-      <dd className="mt-1 truncate font-mono text-gray-800" title={values.join("、")}>
+      <dd className="mt-1 break-words font-mono leading-5 text-gray-800">
         {values.length ? values.join("、") : "暂无"}
       </dd>
     </div>
+  );
+}
+
+function ReusablePatternSection({
+  patterns,
+}: {
+  patterns: ReusableOperatorPattern[];
+}) {
+  if (!patterns.length) return null;
+
+  return (
+    <section className="overflow-hidden rounded-xl ring-1 ring-gray-200">
+      <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-white text-violet-700 ring-1 ring-gray-200">
+            <GitMerge className="size-5" />
+          </span>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-950">可复用组合候选</h2>
+            <p className="mt-1 text-xs leading-5 text-gray-600">
+              根据当前与历史 Flow 的重复组合汇总，仅作为标准化线索，不等于已上线 Flow。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="divide-y divide-gray-100 bg-white">
+        {patterns.map((pattern) => (
+          <PatternEvidence key={pattern.id} pattern={pattern} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PatternEvidence({ pattern }: { pattern: ReusableOperatorPattern }) {
+  const isSequence = pattern.kind === "sequence";
+
+  return (
+    <article className="px-4 py-4">
+      <div className="flex items-start gap-3">
+        <span
+          className={cn(
+            "grid size-8 shrink-0 place-items-center rounded-md",
+            isSequence ? "bg-violet-50 text-violet-700" : "bg-gray-100 text-gray-600"
+          )}
+        >
+          {isSequence ? <GitMerge className="size-4" /> : <Share2 className="size-4" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="break-all font-mono text-xs font-semibold leading-5 text-gray-950">
+              {pattern.operatorIds.join(isSequence ? " → " : " + ")}
+            </h3>
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                isSequence
+                  ? "bg-violet-50 text-violet-700"
+                  : "bg-gray-100 text-gray-600"
+              )}
+            >
+              {isSequence ? "连续串联 · 可评审" : "同 Flow 共现 · 待验证"}
+            </span>
+          </div>
+
+          <p className="mt-2 text-xs leading-5 text-gray-700">
+            被 {pattern.flowCount} 条 Flow 复用，覆盖 {pattern.serviceDomains.length} 个服务场景；
+            当前 {pattern.currentFlowCount} 条，历史 {pattern.historicalFlowCount} 条。
+          </p>
+
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {pattern.serviceDomains.map((domain) => (
+              <span
+                className="rounded bg-gray-100 px-2 py-1 text-[11px] text-gray-600"
+                key={domain}
+              >
+                {domain}
+              </span>
+            ))}
+          </div>
+
+          <p className="mt-3 text-xs leading-5 text-gray-500">
+            {isSequence
+              ? "已具备跨 Flow、跨场景的重复证据；下一步确认字段映射与失败策略，再沉淀为标准 Flow。"
+              : "共现不代表并行或可直接封装，仍需确认步骤顺序、输入输出与共同前后置。"}
+          </p>
+
+          <details className="group mt-3">
+            <summary className="flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-md bg-gray-50 px-3 text-xs font-medium text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 [&::-webkit-details-marker]:hidden">
+              <ChevronRight className="size-3.5 transition-transform group-open:rotate-90 motion-reduce:transition-none" />
+              追溯 {pattern.flowCount} 条证据 Flow
+            </summary>
+            <div className="orbit-scroll mt-2 max-h-56 overflow-y-auto rounded-lg ring-1 ring-gray-200">
+              {pattern.evidenceFlows.map((flow) => (
+                <div
+                  className="flex items-start justify-between gap-3 border-b border-gray-100 px-3 py-2.5 last:border-b-0"
+                  key={`${pattern.id}-${flow.id}`}
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium leading-5 text-gray-900">{flow.name}</p>
+                    <p className="mt-0.5 break-all font-mono text-[10px] leading-4 text-gray-500">
+                      {flow.id}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right text-[11px] leading-5 text-gray-500">
+                    <p>{flow.serviceDomain}</p>
+                    <p>{flow.status === "current" ? "当前" : "历史"} · {flow.lastUsedAt}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </details>
+        </div>
+      </div>
+    </article>
   );
 }
 
