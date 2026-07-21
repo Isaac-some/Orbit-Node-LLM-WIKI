@@ -6,16 +6,17 @@ import {
   Bot,
   Boxes,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Code2,
   Database,
   FileBarChart,
   FileText,
+  GitBranch,
   HardDrive,
   Image,
   Layers3,
-  Map,
+  List,
+  Map as MapIcon,
   PackageCheck,
   Plus,
   Search,
@@ -23,15 +24,16 @@ import {
   Sparkles,
   Star,
   Table2,
-  Trash2,
   Video,
-  Workflow,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { cn } from "@/lib/utils";
+import { OperatorDetailPane } from "@/components/operator-detail-pane";
+import { OperatorLineageMap } from "@/components/operator-lineage-map";
+import { domainLabels } from "@/lib/operator-detail";
 import { operatorRecords, type OperatorDomain, type OperatorRecord } from "@/lib/operator-data";
+import { cn } from "@/lib/utils";
 
 const categoryFilters = [
   { key: "all", label: "全部算子", icon: Boxes },
@@ -40,7 +42,7 @@ const categoryFilters = [
   { key: "image", label: "图片处理", icon: Image },
   { key: "metadata", label: "媒体元数据", icon: FileBarChart },
   { key: "storage", label: "存储、取数与链接", icon: HardDrive },
-  { key: "tabular", label: "CSV、JSONL 与字段处理", icon: Table2 },
+  { key: "tabular", label: "表格与字段处理", icon: Table2 },
   { key: "validation", label: "校验与过滤", icon: ShieldCheck },
   { key: "delivery", label: "预览与交付", icon: PackageCheck },
   { key: "audio", label: "音频处理", icon: Bot },
@@ -48,6 +50,7 @@ const categoryFilters = [
 ] as const;
 
 type CategoryKey = (typeof categoryFilters)[number]["key"];
+type WorkspaceView = "catalog" | "lineage";
 
 type SidebarItem = {
   label: string;
@@ -66,19 +69,6 @@ type OperatorFormState = {
   cardinality: string;
   weeklyRuns: string;
   wiki: string;
-};
-
-const domainLabels: Record<OperatorDomain, string> = {
-  "ai-labeling": "AI 打标与模型",
-  audio: "音频处理",
-  delivery: "预览与交付",
-  hbase: "HBase 读写",
-  image: "图片处理",
-  metadata: "媒体元数据",
-  storage: "存储、取数与链接",
-  tabular: "CSV、JSONL 与字段处理",
-  validation: "校验与过滤",
-  video: "视频处理",
 };
 
 const sidebarSections: Array<{ label: string; items: SidebarItem[] }> = [
@@ -134,6 +124,8 @@ export default function Home() {
   const [activeCategory, setActiveCategory] = useState<CategoryKey>("all");
   const [selectedId, setSelectedId] = useState(operatorRecords[0]?.id ?? "");
   const [search, setSearch] = useState("");
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("catalog");
+  const [compactDetailOpen, setCompactDetailOpen] = useState(false);
   const [customOperators, setCustomOperators] = useState<OperatorRecord[]>([]);
   const [removedIds, setRemovedIds] = useState<string[]>([]);
   const [starredIds, setStarredIds] = useState<string[]>([operatorRecords[0]?.id ?? ""]);
@@ -174,6 +166,11 @@ export default function Home() {
   const selectedOperator =
     visibleOperators.find((operator) => operator.id === selectedId) ?? visibleOperators[0];
 
+  function chooseOperator(operator: OperatorRecord) {
+    setSelectedId(operator.id);
+    setCompactDetailOpen(true);
+  }
+
   function selectAdjacent(direction: 1 | -1) {
     if (!selectedOperator || visibleOperators.length === 0) return;
     const index = visibleOperators.findIndex((operator) => operator.id === selectedOperator.id);
@@ -181,9 +178,15 @@ export default function Home() {
     setSelectedId(visibleOperators[nextIndex].id);
   }
 
+  function closeDetail() {
+    setCompactDetailOpen(false);
+    setSelectedId("");
+  }
+
   function deleteOperator(id: string) {
     setRemovedIds((current) => [...current, id]);
     setSelectedId("");
+    setCompactDetailOpen(false);
     setToast("已从当前视图移除");
   }
 
@@ -192,6 +195,12 @@ export default function Home() {
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
     );
     setToast("收藏状态已更新");
+  }
+
+  function openDetailFromMap(operatorId: string) {
+    setSelectedId(operatorId);
+    setCompactDetailOpen(true);
+    setWorkspaceView("catalog");
   }
 
   function toggleFormDomain(domain: OperatorDomain) {
@@ -225,17 +234,18 @@ export default function Home() {
     }
 
     const intro = operatorForm.intro.trim() || "待补充算子简介。";
-    const wiki =
-      operatorForm.wiki.trim() ||
-      `# \`${id}\` — ${displayName}\n\n## 决策\n\n- **适用**：${intro}\n- **行为**：\`${operatorForm.behavior.trim() || "unknown"}\`；基数 \`${operatorForm.cardinality.trim() || "unknown"}\`。\n\n## 数据输入\n\n待补充。\n\n## 配置\n\n待补充。\n\n## 输出\n\n待补充。\n\n## 风险\n\n- 待补充。`;
+    const detailedDescription = operatorForm.wiki.trim() || intro;
+    const behavior = operatorForm.behavior.trim() || "unknown";
+    const cardinality = operatorForm.cardinality.trim() || "unknown";
+    const wiki = `# ${id} — ${displayName}\n\n## 决策\n\n- **适用**：${detailedDescription}\n- **不适用**：暂无明确限制说明。\n- **行为**：${behavior}；基数 ${cardinality}；执行 unknown。\n- **硬依赖**：无已知硬依赖\n\n## 数据输入\n\n暂无固定字段说明。\n\n## 配置\n\n无用户配置。\n\n## 输出\n\n暂无固定字段说明。\n\n## 风险\n\n- 上线前请补充输入输出和失败处理说明。`;
 
     const newOperator: OperatorRecord = {
       id,
       displayName,
       initial: displayName.slice(0, 1).toUpperCase(),
       domains: operatorForm.domains,
-      behavior: operatorForm.behavior.trim() || "unknown",
-      cardinality: operatorForm.cardinality.trim() || "unknown",
+      behavior,
+      cardinality,
       intro,
       weeklyRuns: operatorForm.weeklyRuns.trim() || "0",
       wiki,
@@ -243,7 +253,9 @@ export default function Home() {
 
     setCustomOperators((current) => [newOperator, ...current]);
     setSelectedId(newOperator.id);
+    setCompactDetailOpen(true);
     setActiveCategory("all");
+    setWorkspaceView("catalog");
     setAddOpen(false);
     setOperatorForm(createBlankOperatorForm());
     setToast("算子已添加到当前视图");
@@ -255,51 +267,73 @@ export default function Home() {
       const isTyping =
         target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
 
-      if (event.key === "/" && !isTyping && !addOpen) {
+      if (event.key === "/" && !isTyping && !addOpen && workspaceView === "catalog") {
         event.preventDefault();
         searchRef.current?.focus();
       }
 
       if (event.key === "Escape") {
         if (addOpen) setAddOpen(false);
-        else setSelectedId("");
+        else if (compactDetailOpen) setCompactDetailOpen(false);
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [addOpen]);
+  }, [addOpen, compactDetailOpen, workspaceView]);
 
   return (
-    <main className="relative h-[100dvh] max-h-[100dvh] overflow-hidden bg-[#111112] text-zinc-100">
-      <div className="grid h-full min-h-0 overflow-hidden bg-[#111112] lg:grid-cols-[260px_minmax(430px,580px)_minmax(480px,1fr)]">
+    <main className="relative h-[100dvh] max-h-[100dvh] overflow-hidden bg-gray-100 text-gray-950">
+      <div className="grid h-full min-h-0 overflow-hidden bg-gray-100 lg:grid-cols-[260px_minmax(0,1fr)]">
         <PlatformSidebar />
 
-        <OperatorList
-          activeCategory={activeCategory}
-          onAdd={() => setAddOpen(true)}
-          onCategory={setActiveCategory}
-          onChoose={(operator) => setSelectedId(operator.id)}
-          onSearch={setSearch}
-          operators={visibleOperators}
-          search={search}
-          searchRef={searchRef}
-          selectedId={selectedOperator?.id}
-          starredIds={starredIds}
-        />
+        <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white">
+          <WorkspaceHeader
+            onAdd={() => setAddOpen(true)}
+            onViewChange={setWorkspaceView}
+            view={workspaceView}
+          />
 
-        <OperatorDetail
-          isStarred={selectedOperator ? starredIds.includes(selectedOperator.id) : false}
-          onClose={() => setSelectedId("")}
-          onDelete={deleteOperator}
-          onNext={() => selectAdjacent(1)}
-          onPrevious={() => selectAdjacent(-1)}
-          onStar={toggleStar}
-          operator={selectedId ? selectedOperator : undefined}
-        />
+          {workspaceView === "catalog" ? (
+            <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(430px,580px)_minmax(480px,1fr)]">
+              <OperatorList
+                activeCategory={activeCategory}
+                className={compactDetailOpen ? "hidden xl:flex" : "flex"}
+                onCategory={setActiveCategory}
+                onChoose={chooseOperator}
+                onSearch={setSearch}
+                operators={visibleOperators}
+                search={search}
+                searchRef={searchRef}
+                selectedId={selectedOperator?.id}
+                starredIds={starredIds}
+              />
+
+              <OperatorDetailPane
+                className={compactDetailOpen ? "flex" : "hidden xl:flex"}
+                isStarred={selectedOperator ? starredIds.includes(selectedOperator.id) : false}
+                onClose={closeDetail}
+                onDelete={deleteOperator}
+                onNext={() => selectAdjacent(1)}
+                onPrevious={() => selectAdjacent(-1)}
+                onStar={toggleStar}
+                operator={selectedId ? selectedOperator : undefined}
+              />
+            </div>
+          ) : (
+            <OperatorLineageMap
+              onOpenDetail={openDetailFromMap}
+              operators={allOperators.filter((operator) => !removedIds.includes(operator.id))}
+              selectedId={selectedOperator?.id}
+            />
+          )}
+        </section>
       </div>
 
-      <div className="pointer-events-none fixed bottom-3 right-5 z-40 rounded-full bg-zinc-950/90 px-3 py-1.5 text-xs text-zinc-300 ring-1 ring-white/10">
+      <div
+        aria-live="polite"
+        className="pointer-events-none fixed bottom-3 right-5 z-40 rounded-full bg-gray-950/88 px-3 py-1.5 text-xs text-gray-100"
+      >
         {toast}
       </div>
 
@@ -316,20 +350,94 @@ export default function Home() {
   );
 }
 
+function WorkspaceHeader({
+  onAdd,
+  onViewChange,
+  view,
+}: {
+  onAdd: () => void;
+  onViewChange: (view: WorkspaceView) => void;
+  view: WorkspaceView;
+}) {
+  return (
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-5">
+      <div className="inline-flex h-9 items-center gap-2 rounded-lg bg-gray-50 px-3 text-sm font-semibold text-gray-950 ring-1 ring-gray-200">
+        <Layers3 className="size-4 text-gray-600" />
+        {view === "catalog" ? "算子地图" : "算子关系图"}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div aria-label="切换工作区视图" className="inline-flex rounded-lg bg-gray-100 p-1" role="group">
+          <WorkspaceViewButton
+            active={view === "catalog"}
+            icon={List}
+            label="列表"
+            onClick={() => onViewChange("catalog")}
+          />
+          <WorkspaceViewButton
+            active={view === "lineage"}
+            icon={GitBranch}
+            label="血缘图"
+            onClick={() => onViewChange("lineage")}
+          />
+        </div>
+        <button
+          className="grid size-10 place-items-center rounded-lg bg-blue-600 text-white transition-colors hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+          onClick={onAdd}
+          title="新增算子"
+          type="button"
+        >
+          <Plus className="size-5" />
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function WorkspaceViewButton({
+  active,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={active}
+      className={cn(
+        "inline-flex h-8 items-center gap-2 rounded-md px-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+        active
+          ? "bg-white text-gray-950 shadow-[0_1px_2px_rgb(15_23_42/0.08)]"
+          : "text-gray-600 hover:text-gray-950"
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      <Icon className="size-4" />
+      <span className="hidden sm:inline">{label}</span>
+    </button>
+  );
+}
+
 function PlatformSidebar() {
   return (
-    <aside className="hidden h-full min-h-0 min-w-0 overflow-hidden border-r border-white/10 bg-[#0f0f10] px-5 py-6 lg:flex lg:flex-col">
+    <aside className="hidden h-full min-h-0 min-w-0 overflow-hidden border-r border-gray-200 bg-gray-50 px-5 py-6 lg:flex lg:flex-col">
       <div className="mb-8 flex items-center gap-3">
-        <div className="grid size-9 place-items-center rounded-full bg-white text-zinc-950">
-          <Map className="size-5" />
+        <div className="grid size-9 place-items-center rounded-full bg-gray-950 text-white">
+          <MapIcon className="size-5" />
         </div>
-        <h1 className="text-lg font-semibold text-white">AI 数据服务平台</h1>
+        <h1 className="text-lg font-semibold text-gray-950">AI 数据服务平台</h1>
       </div>
 
       <div className="orbit-scroll min-h-0 flex-1 overflow-y-auto pr-1">
         {sidebarSections.map((section) => (
           <section className="mb-8" key={section.label}>
-            <p className="mb-3 text-sm text-zinc-500">{section.label}</p>
+            <p className="mb-3 text-sm text-gray-500">{section.label}</p>
             <nav className="space-y-1.5">
               {section.items.map((item) => (
                 <SidebarNode item={item} key={item.label} />
@@ -350,20 +458,20 @@ function SidebarNode({ item, depth = 0 }: { item: SidebarItem; depth?: number })
     <div>
       <button
         className={cn(
-          "flex h-9 w-full items-center gap-3 rounded-md px-2 text-left text-sm font-medium text-zinc-300 transition hover:bg-white/10 hover:text-white",
-          item.active && "bg-white/10 text-blue-400",
-          depth > 0 && "text-zinc-400"
+          "flex h-9 w-full items-center gap-3 rounded-md px-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+          item.active && "bg-gray-100 text-blue-600",
+          depth > 0 && "text-gray-600"
         )}
         style={{ paddingLeft: `${8 + depth * 18}px` }}
         type="button"
       >
-        {Icon ? <Icon className="size-4 shrink-0 text-zinc-500" /> : <span className="w-4 shrink-0" />}
+        {Icon ? <Icon className="size-4 shrink-0 text-gray-500" /> : <span className="w-4 shrink-0" />}
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
-        {item.chevron === "right" ? <ChevronRight className="size-4 text-zinc-500" /> : null}
-        {item.chevron === "down" ? <ChevronDown className="size-4 text-zinc-500" /> : null}
+        {item.chevron === "right" ? <ChevronRight className="size-4 text-gray-500" /> : null}
+        {item.chevron === "down" ? <ChevronDown className="size-4 text-gray-500" /> : null}
       </button>
       {hasChildren ? (
-        <div className={cn("ml-4 mt-1 border-l border-white/10", depth > 0 && "ml-7")}>
+        <div className={cn("ml-4 mt-1 border-l border-gray-200", depth > 0 && "ml-7")}>
           {item.children?.map((child) => (
             <SidebarNode depth={depth + 1} item={child} key={child.label} />
           ))}
@@ -375,7 +483,7 @@ function SidebarNode({ item, depth = 0 }: { item: SidebarItem; depth?: number })
 
 function OperatorList({
   activeCategory,
-  onAdd,
+  className,
   onCategory,
   onChoose,
   onSearch,
@@ -386,7 +494,7 @@ function OperatorList({
   starredIds,
 }: {
   activeCategory: CategoryKey;
-  onAdd: () => void;
+  className?: string;
   onCategory: (category: CategoryKey) => void;
   onChoose: (operator: OperatorRecord) => void;
   onSearch: (value: string) => void;
@@ -397,35 +505,23 @@ function OperatorList({
   starredIds: string[];
 }) {
   return (
-    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r border-white/10 bg-[#151515]">
-      <div className="flex h-14 items-center justify-between border-b border-white/10 px-5">
-        <button
-          className="inline-flex h-8 items-center gap-2 rounded-md bg-white/5 px-2 text-sm font-semibold text-white ring-1 ring-white/10"
-          type="button"
-        >
-          <Layers3 className="size-4 text-zinc-400" />
-          算子地图
-        </button>
-        <button
-          className="grid size-9 place-items-center rounded-md bg-blue-600 text-white ring-1 ring-blue-500 transition hover:bg-blue-500 focus-visible:ring-2 focus-visible:ring-blue-300"
-          onClick={onAdd}
-          title="新增算子"
-          type="button"
-        >
-          <Plus className="size-5" />
-        </button>
-      </div>
-
-      <div className="border-b border-white/10 p-5 pb-3">
-        <label className="flex h-10 items-center gap-3 rounded-md bg-[#0f0f10] px-3 text-sm text-zinc-400 ring-1 ring-white/10 focus-within:ring-blue-500">
+    <section
+      className={cn(
+        "h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white xl:border-r xl:border-gray-200",
+        className
+      )}
+    >
+      <div className="border-b border-gray-200 p-4 pb-3 sm:p-5 sm:pb-3">
+        <label className="flex h-10 items-center gap-3 rounded-lg bg-gray-50 px-3 text-sm text-gray-600 ring-1 ring-gray-200 focus-within:ring-2 focus-within:ring-blue-500">
           <Search className="size-4" />
           <input
-            className="w-full bg-transparent text-zinc-200 outline-none placeholder:text-zinc-500"
+            className="w-full bg-transparent text-gray-800 outline-none placeholder:text-gray-500"
             onChange={(event) => onSearch(event.target.value)}
             placeholder="搜索算子名称、ID、标签..."
             ref={searchRef}
             value={search}
           />
+          <span className="hidden rounded border border-gray-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-gray-500 sm:block">/</span>
         </label>
 
         <div className="orbit-scroll mt-3 flex gap-2 overflow-x-auto pb-1">
@@ -452,8 +548,12 @@ function OperatorList({
             />
           ))
         ) : (
-          <div className="grid h-full place-items-center px-8 text-center text-sm text-zinc-500">
-            没有匹配这个分类或搜索条件的算子。
+          <div className="grid h-full place-items-center px-8 text-center">
+            <div>
+              <Search className="mx-auto size-6 text-gray-400" />
+              <p className="mt-3 text-sm font-medium text-gray-800">没有找到匹配的算子</p>
+              <p className="mt-1 text-xs text-gray-500">换一个关键词或分类再试试。</p>
+            </div>
           </div>
         )}
       </div>
@@ -474,9 +574,10 @@ function CategoryButton({
 
   return (
     <button
+      aria-pressed={active}
       className={cn(
-        "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-zinc-800 px-3 text-xs font-medium text-zinc-300 ring-1 ring-white/10 transition hover:bg-zinc-700",
-        active ? "min-w-32 bg-blue-600 text-white ring-blue-500" : "w-9 px-0"
+        "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-gray-100 px-3 text-xs font-medium text-gray-700 ring-1 ring-gray-200 transition-colors hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+        active ? "min-w-32 bg-blue-600 text-white ring-blue-600 hover:bg-blue-500" : "w-9 px-0"
       )}
       onClick={onClick}
       title={filter.label}
@@ -500,143 +601,40 @@ function OperatorRow({
   starred: boolean;
 }) {
   return (
-    <article
+    <button
+      aria-current={selected ? "true" : undefined}
       className={cn(
-        "group grid cursor-pointer grid-cols-[42px_1fr_auto] gap-3 rounded-lg px-3 py-3 text-sm transition hover:bg-zinc-800/70",
-        selected && "bg-zinc-800/95"
+        "group grid w-full grid-cols-[42px_minmax(0,1fr)_auto] gap-3 rounded-lg px-3 py-3 text-left text-sm transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500",
+        selected && "bg-blue-50"
       )}
       onClick={() => onChoose(operator)}
+      type="button"
     >
-      <div className="relative mt-1 grid size-9 place-items-center rounded-full bg-zinc-700 text-xs font-semibold text-zinc-300 ring-1 ring-white/5">
+      <span className="relative mt-1 grid size-9 place-items-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700">
         {operator.initial}
         {starred ? (
-          <span className="absolute -bottom-0.5 -right-0.5 grid size-4 place-items-center rounded-full bg-amber-400 text-zinc-950 ring-2 ring-[#151515]">
+          <span className="absolute -bottom-0.5 -right-0.5 grid size-4 place-items-center rounded-full bg-amber-400 text-gray-950 ring-2 ring-white">
             <Star className="size-2.5 fill-current" />
           </span>
         ) : null}
-      </div>
+      </span>
 
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="truncate font-semibold text-white">{operator.displayName}</p>
-          <span className="truncate text-xs text-zinc-500">{operator.id}</span>
-        </div>
-        <p className="mt-1 truncate text-zinc-400">
+      <span className="min-w-0">
+        <span className="flex items-center gap-2">
+          <span className="truncate font-semibold text-gray-950">{operator.displayName}</span>
+          <span className="truncate font-mono text-xs text-gray-500">{operator.id}</span>
+        </span>
+        <span className="mt-1 block truncate text-gray-600">
           {operator.domains.map((domain) => domainLabels[domain]).join("；")}
-        </p>
-        <p className="mt-2 truncate text-xs leading-5 text-zinc-400">{operator.intro}</p>
-      </div>
+        </span>
+        <span className="mt-2 block truncate text-xs leading-5 text-gray-600">{operator.intro}</span>
+      </span>
 
-      <div className="flex min-w-20 flex-col items-end gap-1">
-        <span className="mt-1 whitespace-nowrap text-xs text-zinc-500">本周拉起次数</span>
-        <span className="font-mono text-sm font-semibold text-zinc-200">{operator.weeklyRuns}</span>
-      </div>
-    </article>
-  );
-}
-
-function OperatorDetail({
-  isStarred,
-  onClose,
-  onDelete,
-  onNext,
-  onPrevious,
-  onStar,
-  operator,
-}: {
-  isStarred: boolean;
-  onClose: () => void;
-  onDelete: (id: string) => void;
-  onNext: () => void;
-  onPrevious: () => void;
-  onStar: (id: string) => void;
-  operator?: OperatorRecord;
-}) {
-  if (!operator) {
-    return (
-      <section className="hidden h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#151515] xl:flex">
-        <div className="grid h-full place-items-center px-8 text-center">
-          <div>
-            <div className="mx-auto grid size-14 place-items-center rounded-full bg-zinc-900 text-zinc-500">
-              <Workflow className="size-7" />
-            </div>
-            <h2 className="mt-5 text-lg font-semibold text-white">选择一个算子</h2>
-            <p className="mt-2 text-sm text-zinc-500">右侧会显示 Wiki 决策、输入、输出和风险。</p>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section className="hidden h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#151515] xl:flex">
-      <div className="flex h-14 items-center justify-between border-b border-white/10 px-5">
-        <div className="flex items-center gap-4 text-zinc-400">
-          <ToolIcon icon={X} label="关闭" onClick={onClose} />
-          <span className="h-4 w-px bg-white/10" />
-          <ToolIcon icon={ChevronLeft} label="上一个算子" onClick={onPrevious} />
-          <ToolIcon icon={ChevronRight} label="下一个算子" onClick={onNext} />
-        </div>
-
-        <div className="flex items-center gap-2 text-zinc-400">
-          <button
-            className={cn(
-              "grid size-8 place-items-center rounded-md bg-white/5 text-zinc-400 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white",
-              isStarred && "text-amber-400"
-            )}
-            onClick={() => onStar(operator.id)}
-            title="收藏"
-            type="button"
-          >
-            <Star className={cn("size-4", isStarred && "fill-current")} />
-          </button>
-          <button
-            className="grid size-8 place-items-center rounded-md bg-red-500/15 text-red-400 ring-1 ring-red-500/20 transition hover:bg-red-500/20"
-            onClick={() => onDelete(operator.id)}
-            title="删除"
-            type="button"
-          >
-            <Trash2 className="size-4" />
-          </button>
-        </div>
-      </div>
-
-      <div className="border-b border-white/10 px-5 py-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-xl font-semibold leading-7 text-white">{operator.displayName}</h1>
-            <p className="mt-1 font-mono text-xs text-zinc-500">{operator.id}</p>
-          </div>
-          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-blue-600 text-white">
-            <Layers3 className="size-5" />
-          </span>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          {operator.domains.map((domain) => (
-            <span
-              className="rounded-md bg-zinc-900 px-2 py-1 text-xs font-semibold text-white ring-1 ring-white/10"
-              key={domain}
-            >
-              {domainLabels[domain]}
-            </span>
-          ))}
-          <span className="text-zinc-500">|</span>
-          <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-zinc-300 ring-1 ring-white/10">
-            {operator.behavior}
-          </span>
-          <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-zinc-300 ring-1 ring-white/10">
-            {operator.cardinality}
-          </span>
-        </div>
-      </div>
-
-      <article className="orbit-scroll min-h-0 flex-1 overflow-y-auto px-5 py-5">
-        <pre className="whitespace-pre-wrap break-words rounded-lg bg-zinc-900/60 p-5 font-sans text-sm leading-7 text-zinc-200 ring-1 ring-white/10">
-          {operator.wiki}
-        </pre>
-      </article>
-    </section>
+      <span className="flex min-w-20 flex-col items-end gap-1">
+        <span className="mt-1 whitespace-nowrap text-xs text-gray-500">本周拉起</span>
+        <span className="font-mono text-sm font-semibold text-gray-800">{operator.weeklyRuns}</span>
+      </span>
+    </button>
   );
 }
 
@@ -660,15 +658,20 @@ function AddOperatorDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/90 p-4">
-      <section className="flex max-h-[calc(100dvh-32px)] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-[#181818] ring-1 ring-white/10">
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 px-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80 p-4">
+      <section
+        aria-labelledby="add-operator-title"
+        aria-modal="true"
+        className="flex max-h-[calc(100dvh-32px)] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white"
+        role="dialog"
+      >
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 px-4">
           <div>
-            <h2 className="text-sm font-semibold text-white">添加算子</h2>
-            <p className="mt-0.5 text-xs text-zinc-500">新增内容会先保存到当前前端视图</p>
+            <h2 className="text-sm font-semibold text-gray-950" id="add-operator-title">添加算子</h2>
+            <p className="mt-0.5 text-xs text-gray-500">新增内容只保存在当前前端视图</p>
           </div>
           <button
-            className="grid size-8 place-items-center rounded-md bg-white/5 text-zinc-400 ring-1 ring-white/10 hover:bg-white/10 hover:text-white"
+            className="grid size-9 place-items-center rounded-md text-gray-600 hover:bg-gray-100 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             onClick={onClose}
             title="关闭"
             type="button"
@@ -681,7 +684,7 @@ function AddOperatorDialog({
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="算子名称">
               <input
-                className="h-10 w-full rounded-md bg-zinc-950 px-3 text-sm text-zinc-100 outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-blue-500"
+                className="h-10 w-full rounded-md bg-white px-3 text-sm text-gray-950 outline-none ring-1 ring-gray-200 placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500"
                 onChange={(event) => updateDraft({ displayName: event.target.value })}
                 placeholder="例如：视频分割"
                 value={draft.displayName}
@@ -690,34 +693,35 @@ function AddOperatorDialog({
 
             <Field label="正式 ID">
               <input
-                className="h-10 w-full rounded-md bg-zinc-950 px-3 font-mono text-sm text-zinc-100 outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-blue-500"
+                className="h-10 w-full rounded-md bg-white px-3 font-mono text-sm text-gray-950 outline-none ring-1 ring-gray-200 placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500"
                 onChange={(event) => updateDraft({ id: event.target.value })}
                 placeholder="例如：vod.split.custom"
                 value={draft.id}
               />
             </Field>
 
-            <Field label="行为">
+            <Field label="处理方式">
               <input
-                className="h-10 w-full rounded-md bg-zinc-950 px-3 text-sm text-zinc-100 outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-blue-500"
+                className="h-10 w-full rounded-md bg-white px-3 text-sm text-gray-950 outline-none ring-1 ring-gray-200 placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500"
                 onChange={(event) => updateDraft({ behavior: event.target.value })}
-                placeholder="enrich / fanout / validate_or_filter"
+                placeholder="例如：enrich"
                 value={draft.behavior}
               />
             </Field>
 
-            <Field label="基数">
+            <Field label="数据对应关系">
               <input
-                className="h-10 w-full rounded-md bg-zinc-950 px-3 text-sm text-zinc-100 outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-blue-500"
+                className="h-10 w-full rounded-md bg-white px-3 text-sm text-gray-950 outline-none ring-1 ring-gray-200 placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500"
                 onChange={(event) => updateDraft({ cardinality: event.target.value })}
-                placeholder="1:1 / 1:N / N:1"
+                placeholder="例如：1:1 / 1:N / N:1"
                 value={draft.cardinality}
               />
             </Field>
 
             <Field label="本周拉起次数">
               <input
-                className="h-10 w-full rounded-md bg-zinc-950 px-3 font-mono text-sm text-zinc-100 outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-blue-500"
+                className="h-10 w-full rounded-md bg-white px-3 font-mono text-sm text-gray-950 outline-none ring-1 ring-gray-200 placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500"
+                inputMode="numeric"
                 onChange={(event) => updateDraft({ weeklyRuns: event.target.value })}
                 placeholder="0"
                 value={draft.weeklyRuns}
@@ -725,10 +729,10 @@ function AddOperatorDialog({
             </Field>
 
             <Field label="分类标签">
-              <div className="grid max-h-32 gap-2 overflow-y-auto rounded-md bg-zinc-950 p-2 ring-1 ring-white/10">
+              <div className="grid max-h-32 gap-1 overflow-y-auto rounded-md bg-white p-2 ring-1 ring-gray-200">
                 {domainEntries.map(([domain, label]) => (
                   <label
-                    className="flex min-h-8 items-center gap-2 rounded px-2 text-sm text-zinc-300 hover:bg-white/5"
+                    className="flex min-h-8 items-center gap-2 rounded px-2 text-sm text-gray-700 hover:bg-gray-50"
                     key={domain}
                   >
                     <input
@@ -744,34 +748,34 @@ function AddOperatorDialog({
             </Field>
           </div>
 
-          <Field className="mt-4" label="算子简介">
+          <Field className="mt-4" label="一句话简介">
             <textarea
-              className="min-h-20 w-full resize-none rounded-md bg-zinc-950 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-blue-500"
+              className="min-h-20 w-full resize-none rounded-md bg-white px-3 py-2 text-sm leading-6 text-gray-950 outline-none ring-1 ring-gray-200 placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500"
               onChange={(event) => updateDraft({ intro: event.target.value })}
-              placeholder="一句话说明这个算子什么时候使用"
+              placeholder="说明它解决什么问题"
               value={draft.intro}
             />
           </Field>
 
-          <Field className="mt-4" label="Wiki 详情">
+          <Field className="mt-4" label="详细说明（可选）">
             <textarea
-              className="min-h-52 w-full resize-y rounded-md bg-zinc-950 px-3 py-2 font-mono text-sm leading-6 text-zinc-100 outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-blue-500"
+              className="min-h-32 w-full resize-y rounded-md bg-white px-3 py-2 text-sm leading-6 text-gray-950 outline-none ring-1 ring-gray-200 placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500"
               onChange={(event) => updateDraft({ wiki: event.target.value })}
-              placeholder={"# `operator.id` — 算子名称\n\n## 决策\n\n- **适用**：...\n\n## 数据输入\n\n...\n\n## 风险\n\n- ..."}
+              placeholder="补充适用场景、输入输出、使用限制等信息"
               value={draft.wiki}
             />
           </Field>
 
-          <div className="mt-5 flex items-center justify-end gap-2 border-t border-white/10 pt-4">
+          <div className="mt-5 flex items-center justify-end gap-2 border-t border-gray-200 pt-4">
             <button
-              className="h-9 rounded-md bg-white/5 px-4 text-sm font-semibold text-zinc-300 ring-1 ring-white/10 hover:bg-white/10"
+              className="h-9 rounded-md bg-gray-50 px-4 text-sm font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               onClick={onClose}
               type="button"
             >
               取消
             </button>
             <button
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white ring-1 ring-blue-500 hover:bg-blue-500"
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
               type="submit"
             >
               <Plus className="size-4" />
@@ -795,29 +799,8 @@ function Field({
 }) {
   return (
     <label className={cn("block", className)}>
-      <span className="mb-1.5 block text-xs font-medium text-zinc-400">{label}</span>
+      <span className="mb-1.5 block text-xs font-medium text-gray-600">{label}</span>
       {children}
     </label>
-  );
-}
-
-function ToolIcon({
-  icon: Icon,
-  label,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className="grid size-8 place-items-center rounded-md bg-white/5 text-zinc-400 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
-      onClick={onClick}
-      title={label}
-      type="button"
-    >
-      <Icon className="size-4" />
-    </button>
   );
 }
