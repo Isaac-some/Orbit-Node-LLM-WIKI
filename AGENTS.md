@@ -8,14 +8,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Product Intent
 
-This project is an AI 数据服务平台 operator map frontend. Keep the work centered on browsing, filtering, and reading enabled operator Wiki cards, not a marketing website or general cloning scaffold.
+This project is an AI 数据服务平台 capability catalog. Its domain model is Handler (smallest execution unit), Flow (registered Handler group), and Pipeline (orchestrated business chain that may contain Flow, Handler, and inline steps).
 
 The target product surface is:
 - AI 数据服务平台 sidebar information architecture
-- Operator category filtering based on the enabled operator Wiki domains
-- Operator list rows with name, ID, labels, short intro, and weekly launch count
-- Detail pane with operator name, labels, favorite/delete, previous/next, and raw Wiki Markdown
-- Local-only UI interactions; do not execute operators or call production services
+- Handler category filtering based on verified domains
+- Separate Handler, Flow, and Pipeline catalogs
+- Structured details with provenance, cost/resource placeholder status, and steps
+- Read-only behavior until external CRUD and test APIs are configured
 
 ## Tech Stack
 
@@ -48,13 +48,20 @@ The target product surface is:
 - Keep the UI dense, calm, and tool-like.
 - Favor stable layout dimensions for panels, rows, toolbars, and buttons so the app does not jump around.
 - Use icons for common tool actions where possible.
-- Operator facts must come from the enabled operator Wiki. Do not invent operator IDs, categories, inputs, outputs, risks, or behavior.
+- Facts must come from source extraction or confirmed registration data. Do not invent IDs, relationships, inputs, outputs, costs, or behavior.
+- Treat legacy tc-hawk `aigc.Flow` declarations as Pipeline candidates, never as confirmed new-model Flow records.
+- Never expose source paths, commit hashes, credentials, or raw Wiki backlinks in the public bundle.
 
 ## Current Structure
 
 ```text
-src/app/page.tsx             Main operator map interface
-src/lib/operator-data.ts     Generated operator catalog and Wiki Markdown
+src/components/catalog-workspace.tsx  Main catalog interface
+src/components/catalog-detail.tsx     Entity details and test entry
+src/lib/catalog-types.ts              Handler/Flow/Pipeline contracts
+src/lib/handler-data.ts               Generated public Handler data
+src/lib/flow-data.ts                  Confirmed Flow records
+src/lib/pipeline-data.ts              Generated Pipeline candidates
+scripts/                              Repeatable data builders
 src/app/layout.tsx           App metadata
 src/app/globals.css          Tailwind, theme tokens, global styles
 src/lib/utils.ts             cn() class helper
