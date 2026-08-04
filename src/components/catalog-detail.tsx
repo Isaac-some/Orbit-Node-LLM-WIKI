@@ -2,496 +2,144 @@
 
 import type { LucideIcon } from "lucide-react";
 import {
-  AlertTriangle,
-  ArrowLeft,
-  Boxes,
-  Braces,
-  CheckCircle2,
-  CircleDollarSign,
-  FileInput,
-  FileOutput,
-  FlaskConical,
-  Layers3,
-  Play,
-  ServerCog,
-  Settings2,
-  Workflow,
+  AlertTriangle, ArrowLeft, ArrowRight, Boxes, CheckCircle2, ChevronLeft, ChevronRight,
+  CircleDollarSign, Clock3, FileInput, FileOutput, FlaskConical, Layers3, LoaderCircle,
+  Pencil, Play, RotateCcw, ServerCog, Settings2, Trash2, Workflow,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
-import type {
-  CatalogRecord,
-  CatalogStep,
-  FlowRecord,
-  HandlerRecord,
-  PipelineRecord,
-} from "@/lib/catalog-types";
-import {
-  behaviorLabels,
-  cardinalityLabels,
-  domainLabels,
-  parseHandlerDetail,
-  type DetailConfiguration,
-  type DetailField,
-} from "@/lib/handler-detail";
+import type { CatalogRecord, CatalogStep, FlowRecord, HandlerRecord, ProvenanceStatus } from "@/lib/catalog-types";
+import { behaviorLabels, cardinalityLabels, domainLabels, parseHandlerDetail, type DetailConfiguration, type DetailField } from "@/lib/handler-detail";
+import { trackDemoEvent } from "@/lib/demo-catalog";
 import { cn } from "@/lib/utils";
 
 export function CatalogDetail({
   className,
+  developerMode,
+  flows,
   onClose,
+  onDelete,
+  onEdit,
   record,
 }: {
   className?: string;
+  developerMode: boolean;
+  flows: FlowRecord[];
   onClose: () => void;
+  onDelete: (record: CatalogRecord) => void;
+  onEdit: (record: CatalogRecord) => void;
   record?: CatalogRecord;
 }) {
   if (!record) {
-    return (
-      <section className={cn("h-full min-h-0 min-w-0 bg-white", className)}>
-        <div className="grid h-full place-items-center px-8 text-center">
-          <div>
-            <Boxes className="mx-auto size-8 text-gray-400" />
-            <h2 className="mt-4 text-base font-semibold text-gray-950">选择一项查看详情</h2>
-          </div>
-        </div>
-      </section>
-    );
+    return <section className={cn("h-full min-h-0 min-w-0 bg-white", className)}><div className="grid h-full place-items-center px-8 text-center"><div><Boxes className="mx-auto size-8 text-gray-400" /><h2 className="mt-4 text-base font-semibold text-gray-950">选择一项查看详情</h2></div></div></section>;
   }
 
   return (
     <section className={cn("h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white", className)}>
-      <div className="flex h-12 shrink-0 items-center border-b border-gray-200 px-3 sm:px-4 lg:hidden">
-        <button
-          className="inline-flex min-h-10 items-center gap-2 rounded-md px-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600"
-          onClick={onClose}
-          type="button"
-        >
-          <ArrowLeft className="size-4" />
-          返回列表
-        </button>
-      </div>
-
+      <div className="flex h-12 shrink-0 items-center border-b border-gray-200 px-3 sm:px-4 lg:hidden"><button className="inline-flex min-h-10 items-center gap-2 rounded-md px-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600" onClick={onClose} type="button"><ArrowLeft className="size-4" />返回列表</button></div>
       <article className="orbit-scroll min-h-0 flex-1 overflow-y-auto">
-        {record.entityType === "handler" ? <HandlerDetail handler={record} /> : null}
-        {record.entityType === "flow" ? <FlowDetail flow={record} /> : null}
-        {record.entityType === "pipeline" ? <PipelineDetail pipeline={record} /> : null}
+        {record.entityType === "handler" ? <HandlerDetail developerMode={developerMode} flows={flows} handler={record} key={record.handlerId} onDelete={() => onDelete(record)} onEdit={() => onEdit(record)} /> : <FlowDetail developerMode={developerMode} flow={record} key={record.flowId} onDelete={() => onDelete(record)} onEdit={() => onEdit(record)} />}
       </article>
     </section>
   );
 }
 
-function HandlerDetail({ handler }: { handler: HandlerRecord }) {
+function HandlerDetail({ developerMode, flows, handler, onDelete, onEdit }: { developerMode: boolean; flows: FlowRecord[]; handler: HandlerRecord; onDelete: () => void; onEdit: () => void }) {
   const detail = parseHandlerDetail(handler);
   const [testOpen, setTestOpen] = useState(false);
+  const [configurationValues, setConfigurationValues] = useState(() => defaultConfigurationValues(detail.configurations));
+  const relatedFlows = flows.filter((flow) => flow.steps.some((step) => step.stepKind === "handler" && step.entityId === handler.handlerId));
+  const currentFlows = relatedFlows.filter((flow) => flow.status === "published");
+  const historicalFlows = developerMode ? relatedFlows.filter((flow) => flow.status !== "published") : [];
 
-  return (
-    <>
-      <DetailHeader
-        description={handler.intro}
-        icon={Layers3}
-        id={handler.handlerId}
-        title={handler.displayName}
-        tone="handler"
-        typeLabel="Handler / 算子"
-      >
-        <StatusPill label="已启用" tone="success" />
-        <StatusPill label="来源已验证" tone="neutral" />
-      </DetailHeader>
-
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 px-4 py-3 sm:px-5">
-        <button
-          className="inline-flex min-h-10 items-center gap-2 rounded-md bg-cyan-700 px-3 text-sm font-semibold text-white transition-colors hover:bg-cyan-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
-          onClick={() => setTestOpen((current) => !current)}
-          type="button"
-        >
-          <FlaskConical className="size-4" />
-          开始测试
-        </button>
-        <button
-          className="inline-flex min-h-10 cursor-not-allowed items-center gap-2 rounded-md bg-gray-100 px-3 text-sm font-semibold text-gray-500 ring-1 ring-gray-200"
-          disabled
-          title="目录写入 API 尚未配置"
-          type="button"
-        >
-          <Settings2 className="size-4" />
-          编辑
-        </button>
-      </div>
-
-      {testOpen ? <HandlerTestPanel handlerId={handler.handlerId} /> : null}
-
-      <ProfileSummary
-        costLabel="待统计（占位数据）"
-        provenanceLabel="已验证"
-        resourceLabel="待统计（占位数据）"
-      />
-
-      <section className="border-b border-gray-200 px-4 py-5 sm:px-5">
-        <div className="flex flex-wrap gap-2">
-          {handler.domains.map((domain) => (
-            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700" key={domain}>
-              {domainLabels[domain]}
-            </span>
-          ))}
-          <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-xs text-cyan-800 ring-1 ring-cyan-200">
-            {behaviorLabels[handler.behavior] ?? handler.behavior}
-          </span>
-          <span className="rounded-full bg-gray-50 px-2.5 py-1 text-xs text-gray-700 ring-1 ring-gray-200">
-            {cardinalityLabels[handler.cardinality] ?? handler.cardinality}
-          </span>
-        </div>
-      </section>
-
-      <DecisionSection suitableFor={detail.suitableFor} avoidWhen={detail.avoidWhen} />
-      <FactsSection execution={detail.execution} dependencies={detail.dependencies} />
-      <FieldSection fields={detail.inputs} icon={FileInput} note={detail.inputNote} title="输入" />
-      <ConfigurationSection configurations={detail.configurations} note={detail.configurationNote} />
-      <FieldSection fields={detail.outputs} icon={FileOutput} note={detail.outputNote} title="输出" />
-
-      <section className="border-b border-gray-200 px-4 py-5 sm:px-5">
-        <SectionHeading icon={Workflow} title="所属 Flow" />
-        <p className="mt-3 text-sm text-gray-600">暂无已登记关系。</p>
-      </section>
-
-      <section className="px-4 py-5 sm:px-5">
-        <SectionHeading icon={AlertTriangle} title="使用提醒" />
-        <ul className="mt-3 space-y-2 text-sm leading-6 text-gray-700">
-          {(detail.risks.length ? detail.risks : ["暂无已确认的风险说明。"]).map((risk) => (
-            <li className="flex gap-2" key={risk}>
-              <span className="mt-2 size-1.5 shrink-0 rounded-full bg-amber-600" />
-              <span>{risk}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </>
-  );
-}
-
-function FlowDetail({ flow }: { flow: FlowRecord }) {
-  return (
-    <>
-      <DetailHeader
-        description="由多个 Handler 组成的局部能力组合。"
-        icon={Boxes}
-        id={flow.flowId}
-        title={flow.displayName}
-        tone="flow"
-        typeLabel="Flow / Handler 组"
-      >
-        <StatusPill label={flow.reusable ? "可复用" : "不可复用"} tone={flow.reusable ? "success" : "warning"} />
-        <StatusPill label={sourceLabel(flow.registrationSource)} tone="neutral" />
-      </DetailHeader>
-      <ProfileSummary
-        costLabel="待统计（占位数据）"
-        provenanceLabel={provenanceLabel(flow.provenanceStatus)}
-        resourceLabel="待统计（占位数据）"
-      />
-      <StepSection steps={flow.steps} title="Handler 组合" />
-      <FieldPills fields={flow.inputFields} title="输入字段" />
-      <FieldPills fields={flow.outputFields} title="输出字段" />
-    </>
-  );
-}
-
-function PipelineDetail({ pipeline }: { pipeline: PipelineRecord }) {
-  return (
-    <>
-      <DetailHeader
-        description="由旧源码 aigc.Flow 扫描得到的 Pipeline 候选，归并关系尚待业务确认。"
-        icon={Workflow}
-        id={pipeline.pipelineId}
-        title={pipeline.displayName}
-        tone="pipeline"
-        typeLabel="Pipeline / 业务链路"
-      >
-        <StatusPill label="待归并确认" tone="warning" />
-        <StatusPill label="不可推荐" tone="danger" />
-      </DetailHeader>
-      <ProfileSummary
-        costLabel="待统计（占位数据）"
-        provenanceLabel="待确认"
-        resourceLabel="待统计（占位数据）"
-      />
-
-      <section className="border-b border-gray-200 px-4 py-5 sm:px-5">
-        <SectionHeading icon={Braces} title="来源映射" />
-        <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-xs font-medium text-gray-500">旧源码 Flow ID</dt>
-            <dd className="mt-1 break-all font-mono text-gray-900">{pipeline.sourceFlowIds.join("、")}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium text-gray-500">Key 字段</dt>
-            <dd className="mt-1 break-all font-mono text-gray-900">{pipeline.keyField ?? "未显式设置"}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <StepSection steps={pipeline.steps} title="业务链路" />
-      <FieldPills fields={pipeline.outputFields} title="输出字段" />
-    </>
-  );
-}
-
-function HandlerTestPanel({ handlerId }: { handlerId: string }) {
-  const [paths, setPaths] = useState("");
-  const validation = useMemo(() => {
-    const items = paths.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
-    const invalid = items.filter((item) => !item.startsWith("tos://"));
-    return { invalid, items, tooMany: items.length > 20 };
-  }, [paths]);
-
-  return (
-    <section className="border-b border-cyan-200 bg-cyan-50/60 px-4 py-5 sm:px-5">
-      <div className="flex items-start gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-md bg-white text-cyan-800 ring-1 ring-cyan-200">
-          <FlaskConical className="size-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-gray-950">Handler 小批量测试</h2>
-          <p className="mt-1 break-all font-mono text-xs text-gray-500">{handlerId}</p>
-        </div>
-      </div>
-
-      <label className="mt-4 block">
-        <span className="text-xs font-medium text-gray-700">TOS 路径</span>
-        <textarea
-          className="mt-1.5 min-h-32 w-full resize-y rounded-md bg-white px-3 py-2 font-mono text-base leading-6 text-gray-900 outline-none ring-1 ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-cyan-600"
-          onChange={(event) => setPaths(event.target.value)}
-          placeholder={"tos://bucket/path/a.mp4\ntos://bucket/path/b.mp4"}
-          value={paths}
-        />
-      </label>
-
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-xs text-gray-600">
-          {validation.tooMany ? (
-            <span className="font-medium text-red-700">超过 20 条硬上限</span>
-          ) : validation.invalid.length ? (
-            <span className="font-medium text-red-700">{validation.invalid.length} 条路径格式非法</span>
-          ) : (
-            <span>{validation.items.length} 条有效输入</span>
-          )}
-        </div>
-        <button
-          className="inline-flex min-h-10 cursor-not-allowed items-center gap-2 rounded-md bg-gray-200 px-3 text-sm font-semibold text-gray-500"
-          disabled
-          title="测试执行 API 尚未配置"
-          type="button"
-        >
-          <Play className="size-4" />
-          提交测试
-        </button>
-      </div>
-      <p className="mt-3 text-xs text-gray-600">测试环境执行入口待接入。</p>
-    </section>
-  );
-}
-
-function DetailHeader({
-  children,
-  description,
-  icon: Icon,
-  id,
-  title,
-  tone,
-  typeLabel,
-}: {
-  children: React.ReactNode;
-  description: string;
-  icon: LucideIcon;
-  id: string;
-  title: string;
-  tone: "handler" | "flow" | "pipeline";
-  typeLabel: string;
-}) {
-  const tones = {
-    handler: "bg-cyan-700 text-white",
-    flow: "bg-emerald-700 text-white",
-    pipeline: "bg-amber-500 text-gray-950",
-  };
-
-  return (
-    <header className="border-b border-gray-200 px-4 py-5 sm:px-5">
-      <div className="flex items-start gap-4">
-        <span className={cn("grid size-10 shrink-0 place-items-center rounded-md", tones[tone])}>
-          <Icon className="size-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold uppercase text-gray-500">{typeLabel}</span>
-            {children}
-          </div>
-          <h1 className="mt-2 break-words text-xl font-semibold leading-7 text-gray-950">{title}</h1>
-          <p className="mt-1 break-all font-mono text-xs text-gray-500">{id}</p>
-          <p className="mt-3 max-w-[75ch] text-sm leading-6 text-gray-700">{description}</p>
-        </div>
-      </div>
-    </header>
-  );
-}
-
-function StatusPill({ label, tone }: { label: string; tone: "danger" | "neutral" | "success" | "warning" }) {
-  const tones = {
-    danger: "bg-red-50 text-red-700 ring-red-200",
-    neutral: "bg-gray-50 text-gray-700 ring-gray-200",
-    success: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    warning: "bg-amber-50 text-amber-800 ring-amber-200",
-  };
-  return <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1", tones[tone])}>{label}</span>;
-}
-
-function ProfileSummary({
-  costLabel,
-  provenanceLabel: source,
-  resourceLabel,
-}: {
-  costLabel: string;
-  provenanceLabel: string;
-  resourceLabel: string;
-}) {
-  return (
-    <dl className="grid border-b border-gray-200 bg-gray-50 sm:grid-cols-3 sm:divide-x sm:divide-gray-200">
-      <SummaryItem icon={CircleDollarSign} label="单次成本" value={costLabel} />
-      <SummaryItem icon={ServerCog} label="资源占用" value={resourceLabel} />
-      <SummaryItem icon={CheckCircle2} label="数据来源" value={source} />
-    </dl>
-  );
-}
-
-function SummaryItem({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
-  return (
-    <div className="flex min-w-0 gap-3 border-t border-gray-200 px-4 py-3 first:border-t-0 sm:border-t-0">
-      <Icon className="mt-0.5 size-4 shrink-0 text-gray-500" />
-      <div className="min-w-0">
-        <dt className="text-xs text-gray-500">{label}</dt>
-        <dd className="mt-1 break-words text-sm font-medium text-gray-900">{value}</dd>
-      </div>
+  return <>
+    <DetailHeader description={handler.intro} icon={Layers3} id={handler.handlerId} title={handler.displayName} tone="handler" typeLabel="Handler / 算子">
+      <StatusPill label={handler.status === "enabled" ? "已启用" : "已禁用"} tone={handler.status === "enabled" ? "success" : "neutral"} />
+      <StatusPill label={provenanceLabel(handler.provenanceStatus)} tone={provenanceTone(handler.provenanceStatus)} />
+    </DetailHeader>
+    <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 px-4 py-3 sm:px-5">
+      <button className="inline-flex min-h-10 items-center gap-2 rounded-md bg-cyan-700 px-3 text-sm font-semibold text-white transition-colors hover:bg-cyan-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500" onClick={() => setTestOpen((current) => !current)} type="button"><FlaskConical className="size-4" />{testOpen ? "收起测试" : "开始测试"}</button>
+      {developerMode ? <CatalogActions onDelete={onDelete} onEdit={onEdit} /> : null}
     </div>
-  );
+    {testOpen ? <HandlerTestPanel configurationValues={configurationValues} handlerId={handler.handlerId} /> : null}
+    <ProfileSummary costLabel="待统计（占位数据）" provenanceLabel={provenanceLabel(handler.provenanceStatus)} resourceLabel="待统计（占位数据）" />
+    <section className="border-b border-gray-200 px-4 py-5 sm:px-5"><div className="flex flex-wrap gap-2">{handler.domains.map((domain) => <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700" key={domain}>{domainLabels[domain]}</span>)}<span className="rounded-full bg-cyan-50 px-2.5 py-1 text-xs text-cyan-800 ring-1 ring-cyan-200">{behaviorLabels[handler.behavior] ?? handler.behavior}</span><span className="rounded-full bg-gray-50 px-2.5 py-1 text-xs text-gray-700 ring-1 ring-gray-200">{cardinalityLabels[handler.cardinality] ?? handler.cardinality}</span></div></section>
+    <div className="space-y-5 border-b border-gray-200 px-4 py-5 sm:px-5"><FlowUsageSection flows={currentFlows} handlerId={handler.handlerId} status="current" />{developerMode ? <FlowUsageSection flows={historicalFlows} handlerId={handler.handlerId} status="historical" /> : null}</div>
+    <DecisionSection suitableFor={detail.suitableFor} avoidWhen={detail.avoidWhen} />
+    <FactsSection execution={detail.execution} dependencies={detail.dependencies} />
+    <FieldSection fields={detail.inputs} icon={FileInput} note={detail.inputNote} title="输入" />
+    <ConfigurationSection configurations={detail.configurations} note={detail.configurationNote} onChange={(name, value) => setConfigurationValues((current) => ({ ...current, [name]: value }))} values={configurationValues} />
+    <FieldSection fields={detail.outputs} icon={FileOutput} note={detail.outputNote} title="输出" />
+    <section className="px-4 py-5 sm:px-5"><SectionHeading icon={AlertTriangle} title="使用提醒" /><ul className="mt-3 space-y-2 text-sm leading-6 text-gray-700">{(detail.risks.length ? detail.risks : ["暂无已确认的风险说明。"]).map((risk) => <li className="flex gap-2" key={risk}><span className="mt-2 size-1.5 shrink-0 rounded-full bg-amber-600" /><span>{risk}</span></li>)}</ul></section>
+  </>;
 }
 
-function DecisionSection({ avoidWhen, suitableFor }: { avoidWhen: string; suitableFor: string }) {
-  return (
-    <section className="grid border-b border-gray-200 md:grid-cols-2 md:divide-x md:divide-gray-200">
-      <div className="px-4 py-5 sm:px-5">
-        <h2 className="text-sm font-semibold text-gray-950">适合什么时候用</h2>
-        <p className="mt-2 text-sm leading-6 text-gray-700">{suitableFor}</p>
-      </div>
-      <div className="border-t border-gray-200 px-4 py-5 md:border-t-0 sm:px-5">
-        <h2 className="text-sm font-semibold text-gray-950">使用前先确认</h2>
-        <p className="mt-2 text-sm leading-6 text-gray-700">{avoidWhen}</p>
-      </div>
-    </section>
-  );
+function FlowDetail({ developerMode, flow, onDelete, onEdit }: { developerMode: boolean; flow: FlowRecord; onDelete: () => void; onEdit: () => void }) {
+  return <>
+    <DetailHeader description={flow.intro} icon={Workflow} id={flow.flowId} title={flow.displayName} tone="flow" typeLabel="Flow / 工作流">
+      <StatusPill label={flowStatusLabel(flow.status)} tone={flow.status === "published" ? "success" : flow.status === "unpublished" ? "warning" : "neutral"} />
+      <StatusPill label="演示数据" tone="neutral" />
+      <StatusPill label={flow.recommendable ? "可推荐" : "不可推荐"} tone={flow.recommendable ? "success" : "danger"} />
+    </DetailHeader>
+    {developerMode ? <div className="flex border-b border-gray-200 px-4 py-3 sm:px-5"><CatalogActions onDelete={onDelete} onEdit={onEdit} /></div> : null}
+    <section className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950 sm:px-5">这是用于界面验收的演示 Flow；上线状态、步骤和字段不代表真实扫描或注册事实。</section>
+    <section className="border-b border-gray-200 px-4 py-5 sm:px-5"><dl className="grid gap-3 text-sm sm:grid-cols-2"><FlowFact label="服务场景" value={flow.serviceDomain} /><FlowFact label={flow.lastUsedAt ? "最近使用" : "使用记录"} value={flow.lastUsedAt ?? "暂无演示使用记录"} /><FlowFact label="步骤数" value={`${flow.steps.length} 个`} /><FlowFact label="推荐状态" value={flow.recommendable ? "可作为选型参考" : "不可作为当前能力推荐"} /></dl></section>
+    <StepSection steps={flow.steps} title="处理链路" />
+    <FieldPills fields={flow.inputFields} title="入口字段" />
+    <FieldPills fields={flow.outputFields} title="输出字段" />
+  </>;
 }
 
-function FactsSection({ dependencies, execution }: { dependencies: string; execution: string }) {
-  return (
-    <dl className="grid border-b border-gray-200 px-4 py-4 text-sm sm:grid-cols-2 sm:gap-6 sm:px-5">
-      <div>
-        <dt className="text-xs font-medium text-gray-500">执行方式</dt>
-        <dd className="mt-1 text-gray-900">{execution}</dd>
-      </div>
-      <div className="mt-3 sm:mt-0">
-        <dt className="text-xs font-medium text-gray-500">前置依赖</dt>
-        <dd className="mt-1 text-gray-900">{dependencies}</dd>
-      </div>
-    </dl>
-  );
+function FlowUsageSection({ flows, handlerId, status }: { flows: FlowRecord[]; handlerId: string; status: "current" | "historical" }) {
+  const isCurrent = status === "current";
+  const trackRef = useRef<HTMLDivElement>(null);
+  function moveTrack(direction: 1 | -1) { const track = trackRef.current; if (!track) return; const firstCard = track.querySelector<HTMLElement>("[data-flow-card]"); track.scrollBy({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", left: ((firstCard?.offsetWidth ?? track.clientWidth * 0.82) + 12) * direction }); }
+  return <section className={cn("overflow-hidden rounded-lg ring-1", isCurrent ? "bg-blue-50 ring-blue-200" : "bg-amber-50 ring-amber-200")}><div className={cn("flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3", isCurrent ? "border-blue-200" : "border-amber-200")}><div className="flex min-w-0 items-start gap-3"><span className={cn("grid size-9 shrink-0 place-items-center rounded-md bg-white ring-1", isCurrent ? "text-blue-700 ring-blue-200" : "text-amber-700 ring-amber-200")}>{isCurrent ? <Workflow className="size-5" /> : <Clock3 className="size-5" />}</span><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold text-gray-950">{isCurrent ? "当前参与的 Flow" : "历史参与的 Flow"}</h2>{flows.length ? <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-gray-600 ring-1 ring-gray-200">演示数据</span> : null}</div><p className="mt-1 text-xs leading-5 text-gray-600">{isCurrent ? "仅展示已上线、可用于选型参考的 Flow。" : "仅供演示超管追溯，不代表当前可用。"}</p></div></div><div className="flex items-center gap-1.5"><span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 ring-1 ring-gray-200">{flows.length ? `${flows.length} 条` : "暂无"}</span>{flows.length > 1 ? <><TrackButton icon={ChevronLeft} label="上一个 Flow" onClick={() => moveTrack(-1)} /><TrackButton icon={ChevronRight} label="下一个 Flow" onClick={() => moveTrack(1)} /></> : null}</div></div>{flows.length ? <div aria-label={`${isCurrent ? "当前" : "历史"}参与的 Flow，共 ${flows.length} 条`} className="orbit-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto bg-white p-4" ref={trackRef} tabIndex={0}>{flows.map((flow, index) => <FlowUsageCard flow={flow} handlerId={handlerId} index={index} key={flow.flowId} total={flows.length} />)}</div> : <div className="px-4 py-4 text-sm text-gray-600">暂无已收录的参与记录。</div>}</section>;
 }
 
-function FieldSection({ fields, icon, note, title }: { fields: DetailField[]; icon: LucideIcon; note?: string; title: string }) {
-  return (
-    <section className="border-b border-gray-200 px-4 py-5 sm:px-5">
-      <SectionHeading icon={icon} title={title} />
-      {fields.length ? (
-        <div className="mt-3 overflow-x-auto rounded-md ring-1 ring-gray-200">
-          <table className="w-full min-w-[560px] text-left text-xs">
-            <thead className="bg-gray-50 text-gray-500">
-              <tr><th className="px-3 py-2 font-medium">字段</th><th className="px-3 py-2 font-medium">类型</th><th className="px-3 py-2 font-medium">必需</th><th className="px-3 py-2 font-medium">说明</th></tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {fields.map((field) => (
-                <tr key={`${title}-${field.field}`}>
-                  <td className="break-all px-3 py-2.5 font-mono text-gray-950">{field.field}</td>
-                  <td className="px-3 py-2.5 text-gray-700">{field.type}</td>
-                  <td className="px-3 py-2.5 text-gray-700">{field.required ?? "-"}</td>
-                  <td className="px-3 py-2.5 leading-5 text-gray-700">{field.meaning}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : <p className="mt-3 text-sm text-gray-600">{note ?? "暂无固定字段说明。"}</p>}
-    </section>
-  );
+function FlowUsageCard({ flow, handlerId, index, total }: { flow: FlowRecord; handlerId: string; index: number; total: number }) { const handlerIndex = flow.steps.findIndex((step) => step.stepKind === "handler" && step.entityId === handlerId); return <article className="flex w-[min(420px,calc(100vw-64px))] shrink-0 snap-start flex-col rounded-md bg-white p-4 ring-1 ring-gray-200" data-flow-card><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap gap-2"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700">{flow.serviceDomain}</span><span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", flow.status === "published" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600")}>{flowStatusLabel(flow.status)}</span><span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">演示数据</span></div><h3 className="mt-2 text-sm font-semibold leading-5">{flow.displayName}</h3></div><span className="shrink-0 font-mono text-[11px] font-semibold text-gray-500">{String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}</span></div><p className="mt-1 break-all font-mono text-[11px] leading-5 text-gray-500">{flow.flowId}</p><p className="mt-2 text-xs leading-5 text-gray-600">{flow.intro}</p><dl className="mt-3 grid grid-cols-3 gap-2 border-y border-gray-100 py-3 text-[11px]"><FlowStat label="步骤" value={`${flow.steps.length} 个`} /><FlowStat label="算子位置" value={handlerIndex >= 0 ? `第 ${handlerIndex + 1} 步` : "未标注"} /><FlowStat label={flow.lastUsedAt ? "最近使用" : "使用记录"} value={flow.lastUsedAt?.slice(5) ?? "暂无"} /></dl><div className="orbit-scroll mt-3 overflow-x-auto pb-1"><div className="flex min-w-max items-center gap-2">{flow.steps.map((step, stepIndex) => <div className="flex items-center gap-2" key={`${flow.flowId}-${step.stepOrder}`}>{stepIndex ? <ArrowRight className="size-4 shrink-0 text-gray-300" /> : null}<span className={cn("max-w-[180px] whitespace-normal break-all rounded-md px-2.5 py-1.5 text-xs leading-4 ring-1", step.entityId === handlerId ? "bg-blue-600 font-semibold text-white ring-blue-600" : step.stepKind === "handler" ? "bg-gray-50 font-mono text-gray-700 ring-gray-200" : "border border-dashed border-gray-300 text-gray-600 ring-0")}>{step.displayName}</span></div>)}</div></div><dl className="mt-3 grid gap-3 border-t border-gray-100 pt-3 text-xs sm:grid-cols-2"><FlowMeta label="入口字段" values={flow.inputFields} /><FlowMeta label="输出字段" values={flow.outputFields} /></dl></article>; }
+
+type TestInputType = "cid" | "tos" | "url";
+type TestResult = { durationMs: number; estimatedCost: number; rows: Array<{ durationMs: number; input: string; status: "failed" | "passed" }> };
+const testInputOptions: Array<{ label: string; value: TestInputType }> = [{ label: "TOS 路径", value: "tos" }, { label: "CID", value: "cid" }, { label: "URL", value: "url" }];
+const testSamples: Record<TestInputType, string[]> = { tos: ["tos://demo-media/video/product-001.mp4", "tos://demo-media/image/cover-003.jpg", "tos://demo-media/video/damaged-005.mp4"], cid: ["demo_content_001", "demo_content_002", "demo_content_003"], url: ["https://demo.example.com/media/product-001.mp4", "https://demo.example.com/media/cover-003.jpg", "https://demo.example.com/media/damaged-005.mp4"] };
+
+function HandlerTestPanel({ configurationValues, handlerId }: { configurationValues: Record<string, string>; handlerId: string }) {
+  const [inputType, setInputType] = useState<TestInputType>("tos");
+  const [inputs, setInputs] = useState(testSamples.tos.join("\n"));
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<TestResult | null>(null);
+  const validation = useMemo(() => { const items = inputs.split(/\r?\n/).map((item) => item.trim()).filter(Boolean); return { invalid: items.filter((item) => !isValidTestInput(item, inputType)), items, tooMany: items.length > 10 }; }, [inputType, inputs]);
+  function changeInputType(nextType: TestInputType) { setInputType(nextType); setInputs(testSamples[nextType].join("\n")); setResult(null); }
+  function loadSample() { setInputs(testSamples[inputType].join("\n")); setResult(null); trackDemoEvent({ entityId: handlerId, entityType: "handler", event: "handler_test_sample_loaded", metadata: { inputType, itemCount: testSamples[inputType].length } }); }
+  function runTest() { if (!validation.items.length || validation.invalid.length || validation.tooMany || running) return; setRunning(true); setResult(null); window.setTimeout(() => { const rows = validation.items.map((input, index) => ({ durationMs: 680 + ((handlerId.length * 37 + index * 173) % 920), input, status: input.includes("damaged") ? "failed" as const : "passed" as const })); const nextResult = { durationMs: Math.max(...rows.map((row) => row.durationMs)) + 184, estimatedCost: Number((rows.length * 0.0185).toFixed(4)), rows }; setResult(nextResult); setRunning(false); trackDemoEvent({ entityId: handlerId, entityType: "handler", event: "handler_test_submitted", metadata: { configuredFieldCount: Object.keys(configurationValues).length, estimatedCost: nextResult.estimatedCost, failedCount: rows.filter((row) => row.status === "failed").length, inputType, itemCount: rows.length } }); }, 850); }
+  return <section className="border-b border-cyan-200 bg-cyan-50/60 px-4 py-5 sm:px-5"><div className="flex items-start gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-md bg-white text-cyan-800 ring-1 ring-cyan-200"><FlaskConical className="size-4" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold text-gray-950">Handler 小批量测试</h2><span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-cyan-800 ring-1 ring-cyan-200">本地模拟数据</span></div><p className="mt-1 break-all font-mono text-xs text-gray-500">{handlerId}</p></div></div><div aria-label="选择测试输入类型" className="mt-4 flex flex-wrap gap-2">{testInputOptions.map((option) => <button aria-pressed={inputType === option.value} className={cn("min-h-10 rounded-md px-3 text-sm font-medium ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600", inputType === option.value ? "bg-cyan-700 text-white ring-cyan-700" : "bg-white text-gray-700 ring-gray-300 hover:bg-cyan-50")} key={option.value} onClick={() => changeInputType(option.value)} type="button">{option.label}</button>)}</div><label className="mt-4 block"><span className="flex flex-wrap items-center justify-between gap-3 text-xs font-medium text-gray-700"><span>{testInputOptions.find((option) => option.value === inputType)?.label}（1–10 条）</span><button className="inline-flex min-h-9 items-center gap-1.5 rounded-md bg-white px-2.5 text-xs font-semibold text-cyan-800 ring-1 ring-cyan-200 hover:bg-cyan-50" onClick={loadSample} type="button"><RotateCcw className="size-3.5" />恢复演示样本</button></span><textarea className="mt-1.5 min-h-32 w-full resize-y rounded-md bg-white px-3 py-2 font-mono text-base leading-6 text-gray-900 outline-none ring-1 ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-cyan-600" onChange={(event) => setInputs(event.target.value)} placeholder={testSamples[inputType].join("\n")} value={inputs} /></label><div className="mt-3 flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-gray-600">{validation.tooMany ? <span className="font-medium text-red-700">最多只支持 10 条输入，请删除多余内容。</span> : validation.invalid.length ? <span className="font-medium text-red-700">{validation.invalid.length} 条{testInputOptions.find((option) => option.value === inputType)?.label}格式不正确。</span> : <span>{validation.items.length} 条有效输入，已带入 {Object.keys(configurationValues).length} 项当前配置。</span>}</div><button className="inline-flex min-h-10 items-center gap-2 rounded-md bg-cyan-700 px-3 text-sm font-semibold text-white hover:bg-cyan-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500" disabled={!validation.items.length || Boolean(validation.invalid.length) || validation.tooMany || running} onClick={runTest} type="button">{running ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" /> : <Play className="size-4" />}{running ? "模拟执行中..." : "提交模拟测试"}</button></div><p className="mt-3 text-xs leading-5 text-gray-600">结果、耗时和成本均为前端本地模拟，当前配置仅用于演示提交行为，不会调用后端或产生真实费用。</p>{result ? <TestResultView result={result} /> : null}</section>;
 }
 
-function ConfigurationSection({ configurations, note }: { configurations: DetailConfiguration[]; note?: string }) {
-  return (
-    <section className="border-b border-gray-200 px-4 py-5 sm:px-5">
-      <SectionHeading icon={Settings2} title="配置" />
-      {configurations.length ? (
-        <div className="mt-3 grid gap-px overflow-hidden rounded-md bg-gray-200 ring-1 ring-gray-200 sm:grid-cols-2">
-          {configurations.map((configuration) => (
-            <div className="min-w-0 bg-white px-3 py-3" key={configuration.name}>
-              <p className="break-all font-mono text-xs font-semibold text-gray-950">{configuration.name}</p>
-              <p className="mt-1 text-xs leading-5 text-gray-600">{configuration.type} · {configuration.required} · 默认 {configuration.defaultValue}</p>
-            </div>
-          ))}
-        </div>
-      ) : <p className="mt-3 text-sm text-gray-600">{note ?? "无用户配置。"}</p>}
-    </section>
-  );
-}
+function TestResultView({ result }: { result: TestResult }) { const passed = result.rows.filter((row) => row.status === "passed").length; return <div className="mt-4 overflow-hidden rounded-md bg-white ring-1 ring-cyan-200"><dl className="grid grid-cols-2 divide-x divide-y divide-gray-200 bg-gray-50 sm:grid-cols-4 sm:divide-y-0"><TestSummary label="测试数" value={`${result.rows.length} 条`} /><TestSummary label="成功" value={`${passed} 条`} /><TestSummary label="模拟耗时" value={`${(result.durationMs / 1000).toFixed(2)} s`} /><TestSummary label="模拟成本" value={`¥${result.estimatedCost.toFixed(4)}`} /></dl><div className="orbit-scroll max-h-64 overflow-auto"><table className="w-full min-w-[520px] text-left text-xs"><thead className="sticky top-0 bg-white text-gray-500"><tr><th className="px-3 py-2 font-medium">输入</th><th className="px-3 py-2 font-medium">模拟结果</th><th className="px-3 py-2 text-right font-medium">模拟耗时</th></tr></thead><tbody className="divide-y divide-gray-100">{result.rows.map((row) => <tr key={row.input}><td className="max-w-sm truncate px-3 py-2.5 font-mono text-gray-700" title={row.input}>{row.input}</td><td className={cn("px-3 py-2.5 font-semibold", row.status === "passed" ? "text-emerald-700" : "text-red-700")}>{row.status === "passed" ? "模拟成功" : "模拟失败：样本损坏"}</td><td className="px-3 py-2.5 text-right font-mono text-gray-600">{row.durationMs} ms</td></tr>)}</tbody></table></div></div>; }
 
-function StepSection({ steps, title }: { steps: CatalogStep[]; title: string }) {
-  return (
-    <section className="border-b border-gray-200 px-4 py-5 sm:px-5">
-      <SectionHeading icon={Workflow} title={title} />
-      {steps.length ? (
-        <ol className="mt-3 divide-y divide-gray-200 border-y border-gray-200">
-          {steps.map((step) => (
-            <li className="grid grid-cols-[32px_minmax(0,1fr)] gap-3 py-3" key={`${step.stepOrder}-${step.sourceReference}`}>
-              <span className="grid size-8 place-items-center rounded-md bg-gray-100 font-mono text-xs text-gray-600">{step.stepOrder}</span>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium text-gray-950">{step.displayName}</span>
-                  <StatusPill label={stepKindLabel(step.stepKind)} tone={step.stepKind === "inline" ? "neutral" : step.provenanceStatus === "verified" ? "success" : "warning"} />
-                </div>
-                {step.entityId || step.sourceReference ? <p className="mt-1 break-all font-mono text-xs text-gray-500">{step.entityId ?? step.sourceReference}</p> : null}
-              </div>
-            </li>
-          ))}
-        </ol>
-      ) : <p className="mt-3 text-sm text-gray-600">暂无已确认步骤。</p>}
-    </section>
-  );
-}
-
-function FieldPills({ fields, title }: { fields: string[]; title: string }) {
-  return (
-    <section className="border-b border-gray-200 px-4 py-5 last:border-b-0 sm:px-5">
-      <SectionHeading icon={FileOutput} title={title} />
-      {fields.length ? <div className="mt-3 flex flex-wrap gap-2">{fields.map((field) => <span className="max-w-full break-all rounded-md bg-gray-100 px-2 py-1 font-mono text-xs text-gray-700" key={field}>{field}</span>)}</div> : <p className="mt-3 text-sm text-gray-600">暂无已确认字段。</p>}
-    </section>
-  );
-}
-
-function SectionHeading({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
-  return <div className="flex items-center gap-2"><Icon className="size-4 text-gray-500" /><h2 className="text-sm font-semibold text-gray-950">{title}</h2></div>;
-}
-
-function sourceLabel(source: FlowRecord["registrationSource"]) {
-  return { auto: "自动注册", manual: "手动注册", inline: "内联来源", "auto+manual": "自动 + 手动" }[source];
-}
-
-function provenanceLabel(status: FlowRecord["provenanceStatus"]) {
-  return { verified: "已验证", unknown: "未知", placeholder: "占位数据", needs_confirmation: "待确认" }[status];
-}
-
-function stepKindLabel(kind: CatalogStep["stepKind"]) {
-  return { handler: "Handler", flow: "Flow", inline: "内联步骤", unknown: "未知步骤" }[kind];
-}
+function CatalogActions({ onDelete, onEdit }: { onDelete: () => void; onEdit: () => void }) { return <div className="flex flex-wrap gap-2"><button className="inline-flex min-h-10 items-center gap-2 rounded-md bg-white px-3 text-sm font-semibold text-gray-700 ring-1 ring-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600" onClick={onEdit} type="button"><Pencil className="size-4" />编辑</button><button className="inline-flex min-h-10 items-center gap-2 rounded-md bg-white px-3 text-sm font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600" onClick={onDelete} type="button"><Trash2 className="size-4" />删除</button></div>; }
+function DetailHeader({ children, description, icon: Icon, id, title, tone, typeLabel }: { children: React.ReactNode; description: string; icon: LucideIcon; id: string; title: string; tone: "flow" | "handler"; typeLabel: string }) { const tones = { flow: "bg-amber-500 text-gray-950", handler: "bg-cyan-700 text-white" }; return <header className="border-b border-gray-200 px-4 py-5 sm:px-5"><div className="flex items-start gap-4"><span className={cn("grid size-10 shrink-0 place-items-center rounded-md", tones[tone])}><Icon className="size-5" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold uppercase text-gray-500">{typeLabel}</span>{children}</div><h1 className="mt-2 break-words text-xl font-semibold leading-7 text-gray-950">{title}</h1><p className="mt-1 break-all font-mono text-xs text-gray-500">{id}</p><p className="mt-3 max-w-[75ch] text-sm leading-6 text-gray-700">{description}</p></div></div></header>; }
+function StatusPill({ label, tone }: { label: string; tone: "danger" | "neutral" | "success" | "warning" }) { const tones = { danger: "bg-red-50 text-red-700 ring-red-200", neutral: "bg-gray-50 text-gray-700 ring-gray-200", success: "bg-emerald-50 text-emerald-700 ring-emerald-200", warning: "bg-amber-50 text-amber-800 ring-amber-200" }; return <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1", tones[tone])}>{label}</span>; }
+function ProfileSummary({ costLabel, provenanceLabel: source, resourceLabel }: { costLabel: string; provenanceLabel: string; resourceLabel: string }) { return <dl className="grid border-b border-gray-200 bg-gray-50 sm:grid-cols-3 sm:divide-x sm:divide-gray-200"><SummaryItem icon={CircleDollarSign} label="单次成本" value={costLabel} /><SummaryItem icon={ServerCog} label="资源占用" value={resourceLabel} /><SummaryItem icon={CheckCircle2} label="数据来源" value={source} /></dl>; }
+function SummaryItem({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) { return <div className="flex min-w-0 gap-3 border-t border-gray-200 px-4 py-3 first:border-t-0 sm:border-t-0"><Icon className="mt-0.5 size-4 shrink-0 text-gray-500" /><div className="min-w-0"><dt className="text-xs text-gray-500">{label}</dt><dd className="mt-1 break-words text-sm font-medium text-gray-900">{value}</dd></div></div>; }
+function DecisionSection({ avoidWhen, suitableFor }: { avoidWhen: string; suitableFor: string }) { return <section className="grid border-b border-gray-200 md:grid-cols-2 md:divide-x md:divide-gray-200"><div className="px-4 py-5 sm:px-5"><h2 className="text-sm font-semibold text-gray-950">适合什么时候用</h2><p className="mt-2 text-sm leading-6 text-gray-700">{suitableFor}</p></div><div className="border-t border-gray-200 px-4 py-5 md:border-t-0 sm:px-5"><h2 className="text-sm font-semibold text-gray-950">使用前先确认</h2><p className="mt-2 text-sm leading-6 text-gray-700">{avoidWhen}</p></div></section>; }
+function FactsSection({ dependencies, execution }: { dependencies: string; execution: string }) { return <dl className="grid border-b border-gray-200 px-4 py-4 text-sm sm:grid-cols-2 sm:gap-6 sm:px-5"><div><dt className="text-xs font-medium text-gray-500">执行方式</dt><dd className="mt-1 text-gray-900">{execution}</dd></div><div className="mt-3 sm:mt-0"><dt className="text-xs font-medium text-gray-500">前置依赖</dt><dd className="mt-1 text-gray-900">{dependencies}</dd></div></dl>; }
+function FieldSection({ fields, icon, note, title }: { fields: DetailField[]; icon: LucideIcon; note?: string; title: string }) { return <section className="border-b border-gray-200 px-4 py-5 sm:px-5"><SectionHeading icon={icon} title={title} />{fields.length ? <div className="mt-3 overflow-x-auto rounded-md ring-1 ring-gray-200"><table className="w-full min-w-[560px] text-left text-xs"><thead className="bg-gray-50 text-gray-500"><tr><th className="px-3 py-2 font-medium">字段</th><th className="px-3 py-2 font-medium">类型</th><th className="px-3 py-2 font-medium">必需</th><th className="px-3 py-2 font-medium">说明</th></tr></thead><tbody className="divide-y divide-gray-200">{fields.map((field) => <tr key={`${title}-${field.field}`}><td className="break-all px-3 py-2.5 font-mono text-gray-950">{field.field}</td><td className="px-3 py-2.5 text-gray-700">{field.type}</td><td className="px-3 py-2.5 text-gray-700">{field.required ?? "-"}</td><td className="px-3 py-2.5 leading-5 text-gray-700">{field.meaning}</td></tr>)}</tbody></table></div> : <p className="mt-3 text-sm text-gray-600">{note ?? "暂无固定字段说明。"}</p>}</section>; }
+function ConfigurationSection({ configurations, note, onChange, values }: { configurations: DetailConfiguration[]; note?: string; onChange: (name: string, value: string) => void; values: Record<string, string> }) { return <section className="border-b border-gray-200 px-4 py-5 sm:px-5"><SectionHeading icon={Settings2} title="配置" />{configurations.length ? <div className="mt-3 divide-y divide-gray-200 overflow-hidden rounded-md ring-1 ring-gray-200">{configurations.map((configuration) => <div className="grid min-w-0 gap-3 bg-white px-3 py-3 sm:grid-cols-[minmax(150px,1fr)_minmax(220px,1.4fr)] sm:items-center" key={configuration.name}><div><p className="break-all text-xs font-semibold text-gray-950">{configuration.name}</p><p className="mt-1 text-xs leading-5 text-gray-500">{configuration.type} · {configuration.required === "是" ? "必填" : "选填"} · 默认 {configuration.defaultValue}</p></div><ConfigurationControl configuration={configuration} onChange={onChange} value={values[configuration.name] ?? configuration.defaultValue} /></div>)}</div> : <p className="mt-3 text-sm text-gray-600">{note ?? "无用户配置。"}</p>}</section>; }
+function ConfigurationControl({ configuration, onChange, value }: { configuration: DetailConfiguration; onChange: (name: string, value: string) => void; value: string }) { const options = configurationOptions(configuration); if (options.length) return <div aria-label={`${configuration.name} 枚举选项`} className="orbit-scroll flex max-w-full gap-1 overflow-x-auto rounded-md bg-gray-100 p-1">{options.map((option) => <button aria-pressed={value === option} className={cn("min-h-10 shrink-0 rounded px-3 text-xs font-medium text-gray-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600", value === option && "bg-white text-blue-700 shadow-sm")} key={option} onClick={() => onChange(configuration.name, option)} type="button">{option}</button>)}</div>; return <input aria-label={`${configuration.name} 的测试值`} className="min-h-11 w-full rounded-md bg-white px-3 font-mono text-sm text-gray-900 outline-none ring-1 ring-gray-300 focus:ring-2 focus:ring-blue-600" onChange={(event) => onChange(configuration.name, event.target.value)} type={configuration.type === "Int" || configuration.type === "Float" ? "number" : "text"} value={value === "待确认" ? "" : value} />; }
+function configurationOptions(configuration: DetailConfiguration) { if (configuration.type === "Boolean") return ["true", "false"]; const match = configuration.name.match(/\(([^)]+)\)/); return match?.[1]?.split("/").map((option) => option.trim()).filter(Boolean) ?? []; }
+function StepSection({ steps, title }: { steps: CatalogStep[]; title: string }) { return <section className="border-b border-gray-200 px-4 py-5 sm:px-5"><SectionHeading icon={Workflow} title={title} />{steps.length ? <ol className="mt-3 divide-y divide-gray-200 border-y border-gray-200">{steps.map((step) => <li className="grid grid-cols-[32px_minmax(0,1fr)] gap-3 py-3" key={`${step.stepOrder}-${step.sourceReference}`}><span className="grid size-8 place-items-center rounded-md bg-gray-100 font-mono text-xs text-gray-600">{step.stepOrder}</span><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-medium text-gray-950">{step.displayName}</span><StatusPill label={stepKindLabel(step.stepKind)} tone={step.stepKind === "inline" ? "neutral" : step.provenanceStatus === "verified" ? "success" : "warning"} /></div>{step.entityId || step.sourceReference ? <p className="mt-1 break-all font-mono text-xs text-gray-500">{step.entityId ?? step.sourceReference}</p> : null}</div></li>)}</ol> : <p className="mt-3 text-sm text-gray-600">暂无已确认步骤。</p>}</section>; }
+function FieldPills({ fields, title }: { fields: string[]; title: string }) { return <section className="border-b border-gray-200 px-4 py-5 last:border-b-0 sm:px-5"><SectionHeading icon={FileOutput} title={title} />{fields.length ? <div className="mt-3 flex flex-wrap gap-2">{fields.map((field) => <span className="max-w-full break-all rounded-md bg-gray-100 px-2 py-1 font-mono text-xs text-gray-700" key={field}>{field}</span>)}</div> : <p className="mt-3 text-sm text-gray-600">暂无已确认字段。</p>}</section>; }
+function FlowFact({ label, value }: { label: string; value: string }) { return <div><dt className="text-xs font-medium text-gray-500">{label}</dt><dd className="mt-1 break-words text-gray-900">{value}</dd></div>; }
+function FlowStat({ label, value }: { label: string; value: string }) { return <div className="min-w-0"><dt className="text-gray-500">{label}</dt><dd className="mt-1 truncate font-medium text-gray-800" title={value}>{value}</dd></div>; }
+function FlowMeta({ label, values }: { label: string; values: string[] }) { return <div className="min-w-0"><dt className="text-gray-500">{label}</dt><dd className="mt-1 break-words font-mono leading-5 text-gray-800">{values.length ? values.join("、") : "暂无"}</dd></div>; }
+function TrackButton({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick: () => void }) { return <button aria-label={label} className="grid size-8 place-items-center rounded-md bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600" onClick={onClick} title={label} type="button"><Icon className="size-4" /></button>; }
+function TestSummary({ label, value }: { label: string; value: string }) { return <div className="px-3 py-3"><dt className="text-[11px] text-gray-500">{label}</dt><dd className="mt-1 font-mono text-sm font-semibold text-gray-950">{value}</dd></div>; }
+function SectionHeading({ icon: Icon, title }: { icon: LucideIcon; title: string }) { return <div className="flex items-center gap-2"><Icon className="size-4 text-gray-500" /><h2 className="text-sm font-semibold text-gray-950">{title}</h2></div>; }
+function stepKindLabel(kind: CatalogStep["stepKind"]) { return { handler: "Handler", inline: "内联步骤", unknown: "未知步骤" }[kind]; }
+function flowStatusLabel(status: FlowRecord["status"]) { return { archived: "历史归档", published: "已上线", unpublished: "未上线" }[status]; }
+function provenanceLabel(status: ProvenanceStatus) { return { needs_confirmation: "待确认", placeholder: "演示数据", unknown: "来源待确认", verified: "来源已验证" }[status]; }
+function provenanceTone(status: ProvenanceStatus): "neutral" | "success" | "warning" { return status === "verified" ? "success" : status === "placeholder" ? "neutral" : "warning"; }
+function defaultConfigurationValues(configurations: DetailConfiguration[]) { return Object.fromEntries(configurations.map((configuration) => [configuration.name, configuration.defaultValue])); }
+function isValidTestInput(value: string, type: TestInputType) { if (type === "tos") return /^tos:\/\/[^/\s]+\/.+/.test(value); if (type === "url") return /^https?:\/\/[^\s]+/.test(value); return /^[A-Za-z0-9][A-Za-z0-9_-]{2,}$/.test(value); }

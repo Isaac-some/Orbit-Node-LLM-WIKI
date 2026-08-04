@@ -1,4 +1,82 @@
 import type { FlowRecord } from "@/lib/catalog-types";
 
-// Flow is a newly registered Handler group. No verified Flow records exist in the current public build.
-export const flowRecords: FlowRecord[] = [];
+// These records exist only to demonstrate the approved public Flow experience.
+// They are intentionally labeled in the UI and must not be treated as scan facts.
+export const flowRecords: FlowRecord[] = [
+  {
+    entityType: "flow",
+    flowId: "demo.flow.media-caption-review",
+    displayName: "媒体内容描述与质检",
+    intro: "对媒体生成结构化描述，再汇总为质检结果。",
+    status: "published",
+    recommendable: true,
+    isDemo: true,
+    provenanceStatus: "placeholder",
+    serviceDomain: "内容安全",
+    lastUsedAt: "2026-07-21",
+    inputFields: ["tos_path"],
+    outputFields: ["deepseek_output", "quality_result"],
+    steps: [
+      { stepOrder: 1, stepKind: "handler", entityId: "tos.sign", sourceReference: null, displayName: "生成 TOS 签名", provenanceStatus: "placeholder" },
+      { stepOrder: 2, stepKind: "handler", entityId: "ai-platform.deepseek", sourceReference: null, displayName: "生成媒体描述", provenanceStatus: "placeholder" },
+      { stepOrder: 3, stepKind: "inline", entityId: null, sourceReference: "quality-schema", displayName: "结构校验", provenanceStatus: "placeholder" },
+      { stepOrder: 4, stepKind: "handler", entityId: "jsonl.agg", sourceReference: null, displayName: "汇总交付", provenanceStatus: "placeholder" },
+    ],
+  },
+  {
+    entityType: "flow",
+    flowId: "demo.flow.video-risk-audit",
+    displayName: "短视频风险语义审核",
+    intro: "生成视频语义结果，并按审核规则筛选问题素材。",
+    status: "published",
+    recommendable: true,
+    isDemo: true,
+    provenanceStatus: "placeholder",
+    serviceDomain: "短视频治理",
+    lastUsedAt: "2026-07-20",
+    inputFields: ["tos_path"],
+    outputFields: ["deepseek_output", "risk_result"],
+    steps: [
+      { stepOrder: 1, stepKind: "handler", entityId: "tos.sign", sourceReference: null, displayName: "生成 TOS 签名", provenanceStatus: "placeholder" },
+      { stepOrder: 2, stepKind: "handler", entityId: "ai-platform.deepseek", sourceReference: null, displayName: "识别视频语义", provenanceStatus: "placeholder" },
+      { stepOrder: 3, stepKind: "handler", entityId: "eval.filter", sourceReference: null, displayName: "审核规则过滤", provenanceStatus: "placeholder" },
+    ],
+  },
+  {
+    entityType: "flow",
+    flowId: "demo.flow.commerce-caption-draft",
+    displayName: "商品素材描述治理",
+    intro: "为商品素材生成描述，待研发确认后才可发布。",
+    status: "unpublished",
+    recommendable: false,
+    isDemo: true,
+    provenanceStatus: "needs_confirmation",
+    serviceDomain: "电商内容",
+    lastUsedAt: null,
+    inputFields: ["tos_path"],
+    outputFields: ["deepseek_output", "merge_tos_path"],
+    steps: [
+      { stepOrder: 1, stepKind: "handler", entityId: "tos.list", sourceReference: null, displayName: "读取素材目录", provenanceStatus: "placeholder" },
+      { stepOrder: 2, stepKind: "handler", entityId: "ai-platform.deepseek", sourceReference: null, displayName: "生成商品描述", provenanceStatus: "placeholder" },
+      { stepOrder: 3, stepKind: "handler", entityId: "csv.merge", sourceReference: null, displayName: "合并交付", provenanceStatus: "placeholder" },
+    ],
+  },
+  {
+    entityType: "flow",
+    flowId: "demo.flow.general-label-v1",
+    displayName: "通用模型批量标注（历史）",
+    intro: "曾用于批量标注，当前仅供研发追溯，不可推荐。",
+    status: "archived",
+    recommendable: false,
+    isDemo: true,
+    provenanceStatus: "placeholder",
+    serviceDomain: "训练数据",
+    lastUsedAt: "2026-05-14",
+    inputFields: ["tos_path"],
+    outputFields: ["deepseek_output"],
+    steps: [
+      { stepOrder: 1, stepKind: "handler", entityId: "tos.sign", sourceReference: null, displayName: "生成 TOS 签名", provenanceStatus: "placeholder" },
+      { stepOrder: 2, stepKind: "handler", entityId: "ai-platform.deepseek", sourceReference: null, displayName: "批量标注", provenanceStatus: "placeholder" },
+    ],
+  },
+];

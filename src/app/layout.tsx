@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "算子地图",
-  description: "AI 数据服务平台的 Handler、Flow 与 Pipeline 能力目录。",
+  description: "AI 数据服务平台的 Handler 与 Flow 能力目录。",
 };
 
 export default function RootLayout({

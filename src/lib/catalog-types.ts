@@ -1,8 +1,11 @@
-export type CatalogEntityType = "handler" | "flow" | "pipeline";
+export type CatalogEntityType = "handler" | "flow";
 
 export type CatalogStatus =
   | "enabled"
   | "disabled"
+  | "published"
+  | "unpublished"
+  | "archived"
   | "discovered"
   | "needs_confirmation";
 
@@ -13,6 +16,8 @@ export type ProvenanceStatus =
   | "needs_confirmation";
 
 export type RegistrationSource = "inline" | "auto" | "manual" | "auto+manual";
+
+export type PipelineScope = "global" | "project";
 
 export type HandlerDomain =
   | "ai-labeling"
@@ -59,7 +64,23 @@ export type HandlerRecord = {
   testability: "available" | "unavailable" | "unknown";
 };
 
-export type CatalogStepKind = "handler" | "flow" | "inline" | "unknown";
+export type FlowRecord = {
+  displayName: string;
+  entityType: "flow";
+  flowId: string;
+  inputFields: string[];
+  intro: string;
+  isDemo: boolean;
+  lastUsedAt: string | null;
+  outputFields: string[];
+  provenanceStatus: ProvenanceStatus;
+  recommendable: boolean;
+  serviceDomain: string;
+  status: "published" | "unpublished" | "archived";
+  steps: CatalogStep[];
+};
+
+export type CatalogStepKind = "handler" | "inline" | "unknown";
 
 export type CatalogStep = {
   displayName: string;
@@ -70,39 +91,27 @@ export type CatalogStep = {
   stepOrder: number;
 };
 
-export type FlowRecord = {
-  costProfile: CostProfile;
-  displayName: string;
-  entityType: "flow";
-  flowId: string;
-  inputFields: string[];
-  outputFields: string[];
-  provenanceStatus: ProvenanceStatus;
-  recommendable: boolean;
-  registrationSource: RegistrationSource;
-  resourceProfile: ResourceProfile;
-  reusable: boolean;
-  status: CatalogStatus;
-  steps: CatalogStep[];
-};
-
 export type PipelineRecord = {
   costProfile: CostProfile;
   displayName: string;
   entityType: "pipeline";
+  fieldMappings?: string[];
+  inputFields?: string[];
   keyField: string | null;
   outputFields: string[];
   pipelineId: string;
+  projectName: string | null;
   provenanceStatus: ProvenanceStatus;
   recommendable: boolean;
   registrationSource: RegistrationSource;
   resourceProfile: ResourceProfile;
+  scope: PipelineScope;
   sourceFlowIds: string[];
   status: CatalogStatus;
   steps: CatalogStep[];
 };
 
-export type CatalogRecord = HandlerRecord | FlowRecord | PipelineRecord;
+export type CatalogRecord = HandlerRecord | FlowRecord;
 
 export const placeholderCostProfile: CostProfile = {
   costUnit: "次",
