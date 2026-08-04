@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - codex/handler-flow-pipeline-refactor
   workflow_dispatch:
 
 permissions:
