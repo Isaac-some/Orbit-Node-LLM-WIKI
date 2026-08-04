@@ -100,12 +100,12 @@ export type PipelineRecord = {
   keyField: string | null;
   outputFields: string[];
   pipelineId: string;
-  projectName: string | null;
+  projectName?: string | null;
   provenanceStatus: ProvenanceStatus;
   recommendable: boolean;
   registrationSource: RegistrationSource;
   resourceProfile: ResourceProfile;
-  scope: PipelineScope;
+  scope?: PipelineScope;
   sourceFlowIds: string[];
   status: CatalogStatus;
   steps: CatalogStep[];
