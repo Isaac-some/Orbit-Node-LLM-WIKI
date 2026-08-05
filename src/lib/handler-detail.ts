@@ -17,6 +17,8 @@ export const behaviorLabels: Record<string, string> = {
   aggregate: "聚合多条数据",
   enrich: "补充字段",
   fanout: "拆分为多条数据",
+  filter: "校验或过滤",
+  io: "读写与交付",
   transform: "转换数据",
   transform_or_write: "转换并写入",
   validate_or_filter: "校验或过滤",

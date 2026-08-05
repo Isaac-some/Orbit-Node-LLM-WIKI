@@ -88,7 +88,7 @@ export function CatalogEditor({ entityType, existingIds, initial, onCancel, onSa
               <>
                 <Field label="启用状态"><select className={inputClass} onChange={(event) => update("status", event.target.value)} value={values.status}><option value="enabled">已启用</option><option value="disabled">已禁用</option></select></Field>
                 <Field label="领域"><select className={inputClass} onChange={(event) => update("domain", event.target.value)} value={values.domain}>{handlerDomains.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
-                <Field label="处理方式"><select className={inputClass} onChange={(event) => update("behavior", event.target.value)} value={values.behavior}><option value="enrich">补充字段</option><option value="transform">转换数据</option><option value="validate_or_filter">校验或过滤</option><option value="fanout">拆分数据</option><option value="aggregate">聚合数据</option><option value="transform_or_write">转换并写入</option></select></Field>
+                <Field label="行为类别"><select className={inputClass} onChange={(event) => update("behavior", event.target.value)} value={values.behavior}><option value="enrich">Enrich / 补充字段</option><option value="filter">Filter / 校验过滤</option><option value="transform">Transform / 数据转换</option><option value="io">IO / 读写交付</option><option value="aggregate">Aggregate / 聚合汇总</option><option value="fanout">Fanout / 拆分分发</option></select></Field>
                 <Field label="执行方式"><select className={inputClass} onChange={(event) => update("execution", event.target.value)} value={values.execution}><option value="sync">同步处理</option><option value="async_submit">异步提交</option><option value="external_service_sync">同步调用外部服务</option><option value="external_model_sync">同步调用外部模型</option></select></Field>
                 <Field label="前置依赖"><input className={inputClass} onChange={(event) => update("dependencies", event.target.value)} value={values.dependencies} /></Field>
                 <Field label="输入字段" hint="逗号分隔"><input className={`${inputClass} font-mono`} onChange={(event) => update("inputs", event.target.value)} value={values.inputs} /></Field>
@@ -140,7 +140,7 @@ function getInitialValues(entityType: CatalogEntityType, initial?: CatalogRecord
   if (!initial) return base;
   if (initial.entityType === "handler") {
     const detail = parseHandlerDetail(initial);
-    return { ...base, behavior: initial.behavior, configurations: detail.configurations.map((item) => `${item.name} | ${item.type} | ${item.defaultValue}`).join("\n"), dependencies: detail.dependencies, domain: initial.domains[0] ?? "ai-labeling", execution: executionValue(detail.execution), id: initial.handlerId, inputs: detail.inputs.map((item) => item.field).join(", "), intro: initial.intro, name: initial.displayName, outputs: detail.outputs.map((item) => item.field).join(", "), risks: detail.risks.join("\n"), status: initial.status };
+    return { ...base, behavior: editorBehaviorValue(initial.behavior), configurations: detail.configurations.map((item) => `${item.name} | ${item.type} | ${item.defaultValue}`).join("\n"), dependencies: detail.dependencies, domain: initial.domains[0] ?? "ai-labeling", execution: executionValue(detail.execution), id: initial.handlerId, inputs: detail.inputs.map((item) => item.field).join(", "), intro: initial.intro, name: initial.displayName, outputs: detail.outputs.map((item) => item.field).join(", "), risks: detail.risks.join("\n"), status: initial.status };
   }
   return { ...base, id: initial.flowId, inputs: initial.inputFields.join(", "), intro: initial.intro, name: initial.displayName, outputs: initial.outputFields.join(", "), serviceDomain: initial.serviceDomain, status: initial.status, steps: initial.steps.map((step) => step.stepKind === "handler" ? `handler:${step.entityId ?? ""} | ${step.displayName}` : `inline:${step.displayName}`).join("\n") };
 }
@@ -191,6 +191,10 @@ function parseStep(line: string, index: number): CatalogStep {
 
 function executionValue(label: string) {
   return ({ "同步处理": "sync", "异步提交": "async_submit", "同步调用外部服务": "external_service_sync", "同步调用外部模型": "external_model_sync" } as Record<string, string>)[label] ?? "sync";
+}
+
+function editorBehaviorValue(value: string) {
+  return ({ transform_or_write: "io", validate_or_filter: "filter" } as Record<string, string>)[value] ?? value;
 }
 
 function splitComma(value: string) { return value.split(/[,，]/).map((item) => item.trim()).filter(Boolean); }
